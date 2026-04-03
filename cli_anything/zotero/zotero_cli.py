@@ -915,7 +915,7 @@ def item_metrics_command(ctx: click.Context, ref: str, is_pmid: bool) -> int:
             item_data = catalog.get_item(current_runtime(ctx), ref, session=current_session())
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
-        extra = item_data.get("extra") or ""
+        extra = item_data.get("fields", {}).get("extra") or ""
         pmid = None
         for line in extra.splitlines():
             stripped = line.strip()

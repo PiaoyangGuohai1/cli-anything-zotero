@@ -370,7 +370,7 @@ def import_from_doi(doi: str, *, collection_key: str | None = None, tags: list[s
         f"{collection_js}{tag_js}"
         f"return 'OK: imported ' + item.getField('title').substring(0,60) + ' (key: ' + item.key + ')';"
     )
-    return execute_js(js, wait_seconds=15)
+    return execute_js(js, wait_seconds=30)
 
 
 def import_from_pmid(pmid: str, *, collection_key: str | None = None, tags: list[str] | None = None, library_id: int = 1) -> dict:
@@ -421,6 +421,11 @@ def get_annotations(item_key: str, *, library_id: int = 1) -> dict:
     js = (
         f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
         f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+        f"if (item.isAttachment && item.isAttachment()) {{ "
+        f"  var parent = Zotero.Items.get(item.parentItemID); "
+        f"  if (!parent) {{ return 'ERROR: attachment has no parent item'; }} "
+        f"  item = parent; "
+        f"}} "
         f"var attIDs = item.getAttachments(); "
         f"var allAnnots = []; "
         f"for (var aid of attIDs) {{ "

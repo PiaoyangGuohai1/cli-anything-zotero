@@ -8,6 +8,7 @@ from typing import Any
 
 from cli_anything.zotero.core.catalog import get_item
 from cli_anything.zotero.core.discovery import RuntimeContext
+from cli_anything.zotero.core import jsbridge
 from cli_anything.zotero.utils import zotero_http, zotero_sqlite
 
 
@@ -124,7 +125,6 @@ def add_note(
     fmt: str = "text",
     session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    _require_connector(runtime)
     if (text is None and file_path is None) or (text is not None and file_path is not None):
         raise RuntimeError("Provide exactly one of `text` or `file_path`")
 
@@ -132,39 +132,38 @@ def add_note(
     if parent_item["typeName"] in {"note", "attachment", "annotation"}:
         raise RuntimeError("Child notes can only be attached to top-level bibliographic items")
 
-    selected = zotero_http.get_selected_collection(runtime.environment.port)
-    selected_library_id = selected.get("libraryID")
-    if selected_library_id is not None and int(selected_library_id) != int(parent_item["libraryID"]):
-        raise RuntimeError(
-            "note add requires Zotero to have the same library selected as the parent item. "
-            "Switch the Zotero UI to that library and retry."
-        )
-
     if file_path is not None:
         content = Path(file_path).expanduser().read_text(encoding="utf-8")
     else:
         content = text or ""
 
     note_html = _normalize_note_html(content, fmt)
-    session_id = f"note-add-{uuid.uuid4().hex}"
-    zotero_http.connector_save_items(
-        runtime.environment.port,
-        [
-            {
-                "id": session_id,
-                "itemType": "note",
-                "note": note_html,
-                "parentItem": parent_item["key"],
-            }
-        ],
-        session_id=session_id,
+    safe_html = note_html.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "")
+    library_id = parent_item.get("libraryID", 1)
+    parent_key = parent_item["key"]
+
+    js = (
+        f"var parent = Zotero.Items.getByLibraryAndKey({library_id}, '{parent_key}'); "
+        f"if (!parent) {{ return 'ERROR: parent item not found'; }} "
+        f"var note = new Zotero.Item('note'); "
+        f"note.libraryID = {library_id}; "
+        f"note.parentItemID = parent.id; "
+        f"note.setNote('{safe_html}'); "
+        f"await note.saveTx(); "
+        f"return {{key: note.key, itemID: note.id, title: parent.getField('title').substring(0,60)}};"
     )
+    result = jsbridge.execute_js(js, wait_seconds=5)
+
+    if not result.get("ok"):
+        raise RuntimeError(f"Failed to create note via JS bridge: {result.get('error', 'unknown error')}")
+
+    data = result.get("data", {})
     return {
         "action": "note_add",
-        "sessionID": session_id,
-        "parentItemKey": parent_item["key"],
+        "key": data.get("key"),
+        "itemID": data.get("itemID"),
+        "parentItemKey": parent_key,
         "parentItemID": parent_item["itemID"],
         "format": fmt,
         "notePreview": zotero_sqlite.note_preview(note_html),
-        "selectedLibraryID": selected_library_id,
     }
