@@ -62,6 +62,8 @@ setup(
             "README.md",
             "skills/SKILL.md",
             "tests/TEST.md",
+            "plugin/zotero-cli-bridge/manifest.json",
+            "plugin/zotero-cli-bridge/bootstrap.js",
         ],
     },
     include_package_data=True,

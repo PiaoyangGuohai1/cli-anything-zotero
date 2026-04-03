@@ -10,6 +10,7 @@ import click
 
 from cli_anything.zotero import __version__
 from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
+from cli_anything.zotero.utils import zotero_paths
 from cli_anything.zotero.utils.repl_skin import ReplSkin
 
 try:
@@ -19,6 +20,57 @@ except Exception:  # pragma: no cover - platform-specific import guard
 
 
 CONTEXT_SETTINGS = {"ignore_unknown_options": False}
+
+
+def _propagate_json_flag(ctx: click.Context, args: list[str]) -> list[str]:
+    """Extract ``--json`` from *args* and bubble it up to the root context."""
+    if "--json" not in args:
+        return args
+    args = list(args)
+    args.remove("--json")
+    root = ctx.find_root()
+    root.ensure_object(dict)
+    root.obj["json_output"] = True
+    cli_config = root.obj.get("cli_config")
+    if isinstance(cli_config, RootCliConfig):
+        root.obj["cli_config"] = RootCliConfig(
+            backend=cli_config.backend,
+            data_dir=cli_config.data_dir,
+            profile_dir=cli_config.profile_dir,
+            executable=cli_config.executable,
+            json_output=True,
+        )
+    return args
+
+
+class _JsonAwareGroup(click.Group):
+    """A Click Group that accepts ``--json`` at any level and propagates it to the root context.
+
+    This allows users to write ``cli-anything-zotero collection list --json``
+    instead of requiring ``cli-anything-zotero --json collection list``.
+
+    All sub-groups and commands created via this group inherit the same behavior.
+    """
+
+    group_class = None  # set after class definition
+    command_class = None  # set after class definition
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        args = _propagate_json_flag(ctx, args)
+        return super().parse_args(ctx, args)
+
+
+class _JsonAwareCommand(click.Command):
+    """A Click Command that accepts ``--json`` and propagates it to the root context."""
+
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        args = _propagate_json_flag(ctx, args)
+        return super().parse_args(ctx, args)
+
+
+# Wire up so that sub-groups/commands auto-inherit the json-aware behavior.
+_JsonAwareGroup.group_class = _JsonAwareGroup
+_JsonAwareGroup.command_class = _JsonAwareCommand
 
 
 @dataclass(frozen=True)
@@ -193,7 +245,11 @@ def _import_exit_code(payload: dict[str, Any]) -> int:
     return 1 if payload.get("status") == "partial_success" else 0
 
 
-@click.group(context_settings=CONTEXT_SETTINGS, invoke_without_command=True)
+@click.group(
+    context_settings=CONTEXT_SETTINGS,
+    invoke_without_command=True,
+    cls=_JsonAwareGroup,
+)
 @click.option("--json", "json_output", is_flag=True, help="Emit machine-readable JSON.")
 @click.option("--backend", type=click.Choice(["auto", "sqlite", "api"]), default="auto", show_default=True)
 @click.option("--data-dir", default=None, help="Explicit Zotero data directory.")
@@ -274,6 +330,56 @@ def app_ping(ctx: click.Context) -> int:
     if not runtime.connector_available:
         raise click.ClickException(runtime.connector_message)
     emit(ctx, {"connector_available": True, "message": runtime.connector_message})
+    return 0
+
+
+@app.command("install-plugin")
+@click.pass_context
+def app_install_plugin(ctx: click.Context) -> int:
+    """Install the CLI Bridge plugin into Zotero (requires Zotero restart)."""
+    runtime = current_runtime(ctx)
+    profile_dir = runtime.environment.profile_dir
+    if profile_dir is None:
+        raise click.ClickException("Cannot resolve Zotero profile directory.")
+    path = zotero_paths.install_plugin_xpi(profile_dir)
+    emit(ctx, {
+        "action": "install_plugin",
+        "plugin_path": str(path),
+        "message": "Plugin installed. Restart Zotero to activate the JS bridge endpoint.",
+    })
+    return 0
+
+
+@app.command("plugin-status")
+@click.pass_context
+def app_plugin_status(ctx: click.Context) -> int:
+    """Check if the CLI Bridge plugin is installed and the endpoint is active."""
+    runtime = current_runtime(ctx)
+    profile_dir = runtime.environment.profile_dir
+    installed = zotero_paths.plugin_installed(profile_dir)
+    active = jsbridge.bridge_endpoint_active()
+    emit(ctx, {
+        "plugin_installed": installed,
+        "endpoint_active": active,
+        "profile_dir": str(profile_dir) if profile_dir else None,
+    })
+    return 0
+
+
+@app.command("uninstall-plugin")
+@click.pass_context
+def app_uninstall_plugin(ctx: click.Context) -> int:
+    """Remove the CLI Bridge plugin from Zotero (requires Zotero restart)."""
+    runtime = current_runtime(ctx)
+    profile_dir = runtime.environment.profile_dir
+    if profile_dir is None:
+        raise click.ClickException("Cannot resolve Zotero profile directory.")
+    removed = zotero_paths.uninstall_plugin(profile_dir)
+    emit(ctx, {
+        "action": "uninstall_plugin",
+        "removed": removed,
+        "message": "Plugin removed. Restart Zotero." if removed else "Plugin was not installed.",
+    })
     return 0
 
 
@@ -374,7 +480,7 @@ def collection_create_command(
 @click.argument("collection_key")
 @click.pass_context
 def collection_find_pdfs_command(ctx: click.Context, collection_key: str) -> int:
-    """Find available PDFs for all items missing PDFs in a collection (macOS, via JS bridge)."""
+    """Find available PDFs for all items missing PDFs in a collection (via JS bridge)."""
     result = jsbridge.find_pdfs_in_collection(collection_key)
     return emit_js(ctx, result)
 
@@ -383,7 +489,7 @@ def collection_find_pdfs_command(ctx: click.Context, collection_key: str) -> int
 @click.argument("collection_key")
 @click.pass_context
 def collection_stats_command(ctx: click.Context, collection_key: str) -> int:
-    """Get statistics for a Zotero collection (macOS, via JS bridge)."""
+    """Get statistics for a Zotero collection (via JS bridge)."""
     result = jsbridge.collection_stats(collection_key)
     return emit_js(ctx, result)
 
@@ -404,7 +510,7 @@ def collection_remove_item_command(ctx: click.Context, collection_key: str, item
 @click.option("--confirm", is_flag=True, required=True, help="Required to confirm deletion.")
 @click.pass_context
 def collection_delete_command(ctx: click.Context, collection_key: str, delete_items: bool, confirm: bool) -> int:
-    """Delete a collection (macOS, via JS bridge). Requires --confirm."""
+    """Delete a collection (via JS bridge). Requires --confirm."""
     result = jsbridge.delete_collection(collection_key, delete_items=delete_items)
     return emit_js(ctx, result)
 
@@ -415,7 +521,7 @@ def collection_delete_command(ctx: click.Context, collection_key: str, delete_it
 @click.option("--parent", "parent_key", help="Move under this parent collection key.")
 @click.pass_context
 def collection_rename_command(ctx: click.Context, collection_key: str, name: str | None, parent_key: str | None) -> int:
-    """Rename or move a collection (macOS, via JS bridge)."""
+    """Rename or move a collection (via JS bridge)."""
     result = jsbridge.update_collection(collection_key, name=name, parent_key=parent_key)
     return emit_js(ctx, result)
 
@@ -424,7 +530,7 @@ def collection_rename_command(ctx: click.Context, collection_key: str, name: str
 @click.argument("code")
 @click.option("--wait", default=3, help="Seconds to wait for execution.")
 def js_command(code: str, wait: int) -> int:
-    """Execute arbitrary JavaScript in Zotero's JS console (macOS, via JS bridge)."""
+    """Execute arbitrary JavaScript in Zotero's JS console (via JS bridge)."""
     result = jsbridge.execute_js(code, wait_seconds=wait)
     return emit_js(None, result)
 
@@ -432,7 +538,7 @@ def js_command(code: str, wait: int) -> int:
 @cli.command("sync")
 @click.pass_context
 def sync_command(ctx: click.Context) -> int:
-    """Trigger a Zotero sync operation (macOS, via JS bridge)."""
+    """Trigger a Zotero sync operation (via JS bridge)."""
     result = jsbridge.trigger_sync()
     return emit_js(ctx, result)
 
@@ -522,7 +628,7 @@ def item_file_command(ctx: click.Context, ref: str | None) -> int:
 @click.argument("pdf_path", type=click.Path(exists=True))
 @click.pass_context
 def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int:
-    """Attach a local PDF file to an existing Zotero item (macOS, via JS bridge)."""
+    """Attach a local PDF file to an existing Zotero item (via JS bridge)."""
     result = jsbridge.attach_pdf(item_key, pdf_path)
     return emit_js(ctx, result)
 
@@ -531,7 +637,7 @@ def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int
 @click.argument("item_key")
 @click.pass_context
 def item_find_pdf_command(ctx: click.Context, item_key: str) -> int:
-    """Trigger Zotero's 'Find Available PDF' for a single item (macOS, via JS bridge)."""
+    """Trigger Zotero's 'Find Available PDF' for a single item (via JS bridge)."""
     result = jsbridge.find_pdf(item_key)
     return emit_js(ctx, result)
 
@@ -575,7 +681,7 @@ def item_similar_command(ctx: click.Context, item_key: str, top_k: int, min_scor
 @click.option("--field", "fields", multiple=True, help="Field to update as key=value. Repeatable.")
 @click.pass_context
 def item_update_command(ctx: click.Context, item_key: str, fields: tuple[str, ...]) -> int:
-    """Update metadata fields on an existing Zotero item (macOS, via JS bridge)."""
+    """Update metadata fields on an existing Zotero item (via JS bridge)."""
     fields_dict: dict[str, str] = {}
     for f in fields:
         if "=" not in f:
@@ -594,7 +700,7 @@ def item_update_command(ctx: click.Context, item_key: str, fields: tuple[str, ..
 @click.option("--remove", "remove_tags", multiple=True, help="Tag to remove. Repeatable.")
 @click.pass_context
 def item_tag_command(ctx: click.Context, item_key: str, add_tags: tuple[str, ...], remove_tags: tuple[str, ...]) -> int:
-    """Add or remove tags on an existing Zotero item (macOS, via JS bridge)."""
+    """Add or remove tags on an existing Zotero item (via JS bridge)."""
     if not add_tags and not remove_tags:
         raise click.ClickException("At least one --add or --remove tag is required.")
     result = jsbridge.manage_tags(item_key, list(add_tags), list(remove_tags))
@@ -740,7 +846,7 @@ def item_move_to_collection_command(
 @click.option("--limit", default=10, show_default=True, type=int, help="Maximum number of results.")
 @click.pass_context
 def item_search_fulltext_command(ctx: click.Context, query: str, limit: int) -> int:
-    """Search full-text content of PDFs in the Zotero library (macOS, via JS bridge)."""
+    """Search full-text content of PDFs in the Zotero library (via JS bridge)."""
     result = jsbridge.search_fulltext(query, limit=limit)
     return emit_js(ctx, result)
 
@@ -749,7 +855,7 @@ def item_search_fulltext_command(ctx: click.Context, query: str, limit: int) -> 
 @click.argument("item_key")
 @click.pass_context
 def item_annotations_command(ctx: click.Context, item_key: str) -> int:
-    """View annotations and highlights for a Zotero item (macOS, via JS bridge)."""
+    """View annotations and highlights for a Zotero item (via JS bridge)."""
     result = jsbridge.get_annotations(item_key)
     return emit_js(ctx, result)
 
@@ -790,7 +896,7 @@ def item_metrics_command(ctx: click.Context, ref: str, is_pmid: bool) -> int:
 @click.option("--confirm", is_flag=True, help="Confirm deletion. Required to prevent accidental deletions.")
 @click.pass_context
 def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int:
-    """Delete a Zotero item permanently (macOS, via JS bridge)."""
+    """Delete a Zotero item permanently (via JS bridge)."""
     if not confirm:
         raise click.ClickException(
             f"Deleting item '{item_key}' is irreversible. "
@@ -804,7 +910,7 @@ def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int
 @click.option("--limit", default=50, show_default=True, type=int, help="Maximum number of duplicates to return.")
 @click.pass_context
 def item_duplicates_command(ctx: click.Context, limit: int) -> int:
-    """Find duplicate items in the Zotero library (macOS, via JS bridge)."""
+    """Find duplicate items in the Zotero library (via JS bridge)."""
     result = jsbridge.find_duplicates(limit=limit)
     return emit_js(ctx, result)
 
@@ -939,7 +1045,7 @@ def import_json_command(
 @click.option("--tag", "tags", multiple=True, help="Tag to apply after import. Repeatable.")
 @click.pass_context
 def import_doi_command(ctx: click.Context, doi: str, collection_key: str | None, tags: tuple[str, ...]) -> int:
-    """Import an item by DOI using Zotero's built-in translator (macOS, via JS bridge)."""
+    """Import an item by DOI using Zotero's built-in translator (via JS bridge)."""
     result = jsbridge.import_from_doi(doi, collection_key=collection_key, tags=list(tags) if tags else None)
     return emit_js(ctx, result)
 
@@ -950,7 +1056,7 @@ def import_doi_command(ctx: click.Context, doi: str, collection_key: str | None,
 @click.option("--tag", "tags", multiple=True, help="Tag to apply after import. Repeatable.")
 @click.pass_context
 def import_pmid_command(ctx: click.Context, pmid: str, collection_key: str | None, tags: tuple[str, ...]) -> int:
-    """Import an item by PMID using Zotero's built-in translator (macOS, via JS bridge)."""
+    """Import an item by PMID using Zotero's built-in translator (via JS bridge)."""
     result = jsbridge.import_from_pmid(pmid, collection_key=collection_key, tags=list(tags) if tags else None)
     return emit_js(ctx, result)
 

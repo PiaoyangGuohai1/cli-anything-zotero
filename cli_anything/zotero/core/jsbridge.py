@@ -3,12 +3,14 @@
 Two transport modes (auto-selected):
 1. HTTP mode (preferred): POST to /cli-bridge/eval on Zotero's HTTP server.
    Zero UI, instant response, returns structured data.
-   Requires one-time registration via `ensure_bridge()`.
+   The endpoint is registered automatically by the CLI Bridge Zotero plugin.
 
-2. AppleScript mode (fallback): GUI automation of Zotero's "Run JavaScript"
-   dialog. Used for initial bridge registration and when HTTP is unavailable.
+2. AppleScript mode (deprecated, macOS-only fallback): GUI automation of
+   Zotero's "Run JavaScript" dialog. Used only when the plugin is not
+   installed and the platform is macOS.
 
-Requirements: macOS, Zotero running.
+Requirements: Zotero 7+ running with the CLI Bridge plugin installed.
+              Install via: cli-anything-zotero app install-plugin
 """
 
 from __future__ import annotations
@@ -17,11 +19,13 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
+import warnings
 
 _BRIDGE_URL = "http://localhost:23119/cli-bridge/eval"
-_RESULT_FILE = "/tmp/zotero-cli-result.json"
+_RESULT_FILE = os.path.join(tempfile.gettempdir(), "zotero-cli-result.json")
 
 _LOCALE = os.environ.get("ZOTERO_LOCALE", "en")
 
@@ -45,13 +49,17 @@ _REGISTER_JS = (
 )
 
 
-def _check_platform() -> None:
+def _check_applescript_platform() -> None:
+    """Guard for the deprecated AppleScript code path (macOS only)."""
     if sys.platform != "darwin":
-        raise RuntimeError("Zotero JS bridge requires macOS (AppleScript)")
+        raise RuntimeError(
+            "AppleScript is not available on this platform. "
+            "Install the CLI Bridge plugin: cli-anything-zotero app install-plugin"
+        )
 
 
-def _http_available() -> bool:
-    """Check if the CLI bridge HTTP endpoint is registered."""
+def bridge_endpoint_active() -> bool:
+    """Check if the CLI bridge HTTP endpoint is registered and responding."""
     try:
         req = urllib.request.Request(
             _BRIDGE_URL,
@@ -93,8 +101,8 @@ def _execute_http(code: str, *, timeout: int = 30) -> dict:
 
 
 def _execute_applescript(code: str, *, wait_seconds: int = 3, capture: bool = True) -> dict:
-    """Execute JS via AppleScript GUI automation (fallback)."""
-    _check_platform()
+    """Execute JS via AppleScript GUI automation (deprecated macOS-only fallback)."""
+    _check_applescript_platform()
 
     if capture and os.path.exists(_RESULT_FILE):
         os.remove(_RESULT_FILE)
@@ -157,9 +165,11 @@ end tell
 
 def _inject_result_capture(code: str) -> str:
     """Wrap JS code in an async function to capture return value via temp file."""
+    # Use forward slashes so the path is valid JavaScript on all platforms.
+    safe_path = _RESULT_FILE.replace("\\", "/")
     return (
         f"var __r = await (async () => {{ {code} }})(); "
-        f"await Zotero.File.putContentsAsync('{_RESULT_FILE}', JSON.stringify(__r)); "
+        f"await Zotero.File.putContentsAsync('{safe_path}', JSON.stringify(__r)); "
         f"return __r;"
     )
 
@@ -184,33 +194,64 @@ def _read_result() -> dict:
 
 
 def ensure_bridge() -> dict:
-    """Ensure the HTTP bridge is registered. Uses AppleScript if needed (one-time popup)."""
-    if _http_available():
+    """Ensure the HTTP bridge is registered.
+
+    The recommended way is to install the CLI Bridge Zotero plugin, which
+    registers the endpoint automatically on startup (works on all platforms).
+    On macOS, AppleScript is kept as a deprecated fallback.
+    """
+    if bridge_endpoint_active():
         return {"ok": True, "data": "HTTP bridge already active", "error": None}
 
-    # Register via AppleScript (will cause one UI popup)
-    result = _execute_applescript(_REGISTER_JS, wait_seconds=4, capture=True)
-    if _http_available():
-        return {"ok": True, "data": "HTTP bridge registered (one-time setup)", "error": None}
-    return {"ok": False, "data": None, "error": f"Failed to register HTTP bridge: {result}"}
+    # Plugin not loaded — try AppleScript fallback on macOS
+    if sys.platform == "darwin":
+        warnings.warn(
+            "AppleScript bridge registration is deprecated. "
+            "Install the CLI Bridge plugin instead: "
+            "cli-anything-zotero app install-plugin",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        result = _execute_applescript(_REGISTER_JS, wait_seconds=4, capture=True)
+        if bridge_endpoint_active():
+            return {"ok": True, "data": "HTTP bridge registered via AppleScript (deprecated)", "error": None}
+        return {"ok": False, "data": None, "error": f"Failed to register HTTP bridge: {result}"}
+
+    # Non-macOS: no fallback available
+    return {
+        "ok": False,
+        "data": None,
+        "error": (
+            "JS Bridge endpoint not available. "
+            "Install the CLI Bridge plugin: cli-anything-zotero app install-plugin, "
+            "then restart Zotero."
+        ),
+    }
 
 
 def execute_js(code: str, *, wait_seconds: int = 3, capture: bool = True) -> dict:
-    """Execute JavaScript in Zotero. Uses HTTP bridge if available, AppleScript fallback.
+    """Execute JavaScript in Zotero.
+
+    Uses the HTTP bridge (registered by the CLI Bridge plugin).
+    Falls back to AppleScript on macOS if the plugin is not installed.
 
     Returns {"ok": bool, "data": <result>, "error": str | None}
     """
     # Try HTTP first (no UI)
-    if _http_available():
+    if bridge_endpoint_active():
         return _execute_http(code, timeout=max(wait_seconds, 10))
 
     # Auto-register bridge, then retry HTTP
     reg = ensure_bridge()
-    if reg["ok"] and _http_available():
+    if reg["ok"] and bridge_endpoint_active():
         return _execute_http(code, timeout=max(wait_seconds, 10))
 
-    # Fallback to AppleScript
-    return _execute_applescript(code, wait_seconds=wait_seconds, capture=capture)
+    # On macOS, final fallback to AppleScript (deprecated)
+    if sys.platform == "darwin":
+        return _execute_applescript(code, wait_seconds=wait_seconds, capture=capture)
+
+    # Non-macOS: return the registration error
+    return reg
 
 
 # ── High-level functions ─────────────────────────────────────────────

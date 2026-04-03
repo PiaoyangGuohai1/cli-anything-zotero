@@ -4,6 +4,7 @@ import configparser
 import os
 import re
 import shutil
+import zipfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Mapping, Optional
@@ -281,6 +282,59 @@ def build_environment(
         port=get_http_port(profile_dir, env=env),
         local_api_enabled_configured=is_local_api_enabled(profile_dir),
     )
+
+
+PLUGIN_ADDON_ID = "cli-bridge@cli-anything.dev"
+
+
+def find_extensions_dir(profile_dir: Path) -> Path:
+    """Return the extensions directory inside a Zotero profile."""
+    return profile_dir / "extensions"
+
+
+def plugin_installed(profile_dir: Path | None) -> bool:
+    """Check whether the CLI Bridge plugin .xpi is installed in the profile."""
+    if profile_dir is None:
+        return False
+    xpi = find_extensions_dir(profile_dir) / f"{PLUGIN_ADDON_ID}.xpi"
+    return xpi.is_file()
+
+
+def _plugin_source_dir() -> Path:
+    """Locate the bundled plugin source files shipped with this package."""
+    return Path(__file__).resolve().parent.parent / "plugin" / "zotero-cli-bridge"
+
+
+def install_plugin_xpi(profile_dir: Path) -> Path:
+    """Build the .xpi from bundled sources and install it into the Zotero profile.
+
+    Returns the path to the installed .xpi file.
+    """
+    src = _plugin_source_dir()
+    manifest = src / "manifest.json"
+    bootstrap = src / "bootstrap.js"
+    if not manifest.is_file() or not bootstrap.is_file():
+        raise FileNotFoundError(f"Plugin source files not found in {src}")
+
+    ext_dir = find_extensions_dir(profile_dir)
+    ext_dir.mkdir(parents=True, exist_ok=True)
+
+    xpi_path = ext_dir / f"{PLUGIN_ADDON_ID}.xpi"
+    with zipfile.ZipFile(xpi_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(manifest, "manifest.json")
+        zf.write(bootstrap, "bootstrap.js")
+    return xpi_path
+
+
+def uninstall_plugin(profile_dir: Path | None) -> bool:
+    """Remove the CLI Bridge plugin from the Zotero profile. Returns True if removed."""
+    if profile_dir is None:
+        return False
+    xpi = find_extensions_dir(profile_dir) / f"{PLUGIN_ADDON_ID}.xpi"
+    if xpi.is_file():
+        xpi.unlink()
+        return True
+    return False
 
 
 def ensure_local_api_enabled(profile_dir: Path | None) -> Optional[Path]:
