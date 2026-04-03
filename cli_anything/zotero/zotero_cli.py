@@ -336,16 +336,47 @@ def app_ping(ctx: click.Context) -> int:
 @app.command("install-plugin")
 @click.pass_context
 def app_install_plugin(ctx: click.Context) -> int:
-    """Install the CLI Bridge plugin into Zotero (requires Zotero restart)."""
+    """Install the CLI Bridge plugin into Zotero.
+
+    Builds the .xpi and attempts programmatic installation via the JS bridge.
+    If that is not available, saves the .xpi and prints manual install instructions.
+    """
     runtime = current_runtime(ctx)
     profile_dir = runtime.environment.profile_dir
     if profile_dir is None:
         raise click.ClickException("Cannot resolve Zotero profile directory.")
-    path = zotero_paths.install_plugin_xpi(profile_dir)
+    xpi_path = zotero_paths.install_plugin_xpi(profile_dir)
+
+    # Try programmatic install via JS bridge (works when bridge is already active)
+    if jsbridge.bridge_endpoint_active():
+        js = (
+            "var {AddonManager} = ChromeUtils.importESModule("
+            "'resource://gre/modules/AddonManager.sys.mjs'); "
+            f"var file = Zotero.File.pathToFile('{str(xpi_path).replace(chr(92), '/')}'); "
+            "var install = await AddonManager.getInstallForFile(file); "
+            "await install.install(); "
+            "return 'OK: ' + install.addon.id;"
+        )
+        result = jsbridge.execute_js(js, wait_seconds=10)
+        if result.get("ok") and result.get("data", "").startswith("OK"):
+            emit(ctx, {
+                "action": "install_plugin",
+                "method": "automatic",
+                "plugin_path": str(xpi_path),
+                "message": "Plugin installed and activated. Restart Zotero to ensure it persists.",
+            })
+            return 0
+
+    # Fallback: save xpi and instruct user to install manually
     emit(ctx, {
         "action": "install_plugin",
-        "plugin_path": str(path),
-        "message": "Plugin installed. Restart Zotero to activate the JS bridge endpoint.",
+        "method": "manual",
+        "plugin_path": str(xpi_path),
+        "message": (
+            "Plugin .xpi created. Install manually in Zotero: "
+            "Tools > Add-ons > gear icon > Install Add-on From File, "
+            f"then select: {xpi_path}"
+        ),
     })
     return 0
 
