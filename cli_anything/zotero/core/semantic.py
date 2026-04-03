@@ -1,8 +1,8 @@
 """Semantic search for Zotero library using local embedding API + vector SQLite database.
 
-Reuses the vector index built by zotero-mcp plugin. Queries the local OMLX
-embedding API (OpenAI-compatible) to convert text to vectors, then performs
-cosine similarity search against the existing SQLite vector store.
+Queries a local OpenAI-compatible embedding API to convert text to vectors,
+then performs cosine similarity search against a SQLite vector store.
+The vector index can be built with `cli-anything-zotero item build-index`.
 """
 
 from __future__ import annotations
@@ -14,13 +14,10 @@ import struct
 import urllib.request
 from pathlib import Path
 
-# Embedding API config (same as zotero-mcp plugin uses)
 _EMBED_API = os.environ.get("ZOTERO_EMBED_API", "http://127.0.0.1:8080/v1/embeddings")
 _EMBED_MODEL = os.environ.get("ZOTERO_EMBED_MODEL", "nomic-embed-text")
 _EMBED_KEY = os.environ.get("ZOTERO_EMBED_KEY", "")
-
-# Vector database path
-_VECTOR_DB = os.environ.get("ZOTERO_VECTOR_DB", str(Path.home() / "Zotero" / "zotero-mcp-vectors.sqlite"))
+_VECTOR_DB = os.environ.get("ZOTERO_VECTOR_DB", str(Path.home() / "Zotero" / "cli-anything-vectors.sqlite"))
 
 
 def _get_embedding(text: str) -> list[float]:
@@ -68,6 +65,102 @@ def _load_f32_vectors(conn: sqlite3.Connection, language: str = "all", exclude_k
         f"WHERE 1=1 {lang_filter} {key_filter}"
     ).fetchall()
     return rows
+
+
+def _detect_language(text: str) -> str:
+    """Simple heuristic: if >30% CJK characters, return 'zh', else 'en'."""
+    if not text:
+        return "en"
+    cjk = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    return "zh" if cjk / max(len(text), 1) > 0.3 else "en"
+
+
+def _encode_f32_vector(vec: list[float]) -> bytes:
+    """Encode float32 vector to bytes."""
+    return struct.pack(f"{len(vec)}f", *vec)
+
+
+def build_index(zotero_sqlite: str, *, batch_size: int = 20) -> dict:
+    """Build the vector index from Zotero's SQLite database.
+
+    Reads item metadata (title, abstract, creators) from zotero.sqlite,
+    generates embeddings via the configured API, and stores them in the
+    vector database.
+
+    Returns {"ok": bool, "indexed": int, "skipped": int, "error": ...}
+    """
+    if not os.path.exists(zotero_sqlite):
+        return {"ok": False, "indexed": 0, "skipped": 0, "error": f"Zotero DB not found: {zotero_sqlite}"}
+
+    # Read items from Zotero SQLite
+    try:
+        src = sqlite3.connect(f"file:{zotero_sqlite}?mode=ro&immutable=1", uri=True)
+        rows = src.execute("""
+            SELECT i.key, MAX(CASE WHEN f.fieldName='title' THEN iv.value END),
+                   MAX(CASE WHEN f.fieldName='abstractNote' THEN iv.value END)
+            FROM items i
+            JOIN itemData id ON i.itemID = id.itemID
+            JOIN itemDataValues iv ON id.valueID = iv.valueID
+            JOIN fields f ON id.fieldID = f.fieldID
+            WHERE i.itemTypeID NOT IN (1, 14)
+              AND f.fieldName IN ('title', 'abstractNote')
+            GROUP BY i.key
+        """).fetchall()
+        src.close()
+    except Exception as e:
+        return {"ok": False, "indexed": 0, "skipped": 0, "error": f"Read error: {e}"}
+
+    if not rows:
+        return {"ok": True, "indexed": 0, "skipped": 0, "error": None}
+
+    # Create/open vector DB
+    db = sqlite3.connect(_VECTOR_DB)
+    db.execute("""CREATE TABLE IF NOT EXISTS embeddings (
+        item_key TEXT, chunk_id INTEGER, chunk_text TEXT, language TEXT,
+        PRIMARY KEY (item_key, chunk_id))""")
+    db.execute("""CREATE TABLE IF NOT EXISTS vectors_f32 (
+        item_key TEXT, chunk_id INTEGER, vector BLOB,
+        PRIMARY KEY (item_key, chunk_id))""")
+
+    # Check which keys already indexed
+    existing = {r[0] for r in db.execute("SELECT DISTINCT item_key FROM embeddings").fetchall()}
+
+    indexed = 0
+    skipped = 0
+    errors = []
+
+    for key, title, abstract in rows:
+        if key in existing:
+            skipped += 1
+            continue
+
+        text = (title or "") + "\n" + (abstract or "")
+        text = text.strip()
+        if not text:
+            skipped += 1
+            continue
+
+        try:
+            vec = _get_embedding(text)
+        except Exception as e:
+            errors.append(f"{key}: {e}")
+            continue
+
+        lang = _detect_language(text)
+        db.execute("INSERT OR REPLACE INTO embeddings VALUES (?, 0, ?, ?)", (key, text[:2000], lang))
+        db.execute("INSERT OR REPLACE INTO vectors_f32 VALUES (?, 0, ?)", (key, _encode_f32_vector(vec)))
+        indexed += 1
+
+        if indexed % batch_size == 0:
+            db.commit()
+
+    db.commit()
+    db.close()
+
+    result = {"ok": True, "indexed": indexed, "skipped": skipped, "total": len(rows), "db_path": _VECTOR_DB, "error": None}
+    if errors:
+        result["errors"] = errors[:10]
+    return result
 
 
 def semantic_search(query: str, *, top_k: int = 10, min_score: float = 0.3, language: str = "all") -> dict:

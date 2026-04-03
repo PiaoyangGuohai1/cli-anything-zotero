@@ -708,6 +708,15 @@ def item_similar_command(ctx: click.Context, item_key: str, top_k: int, min_scor
     return emit_js(ctx, result)
 
 
+@item.command("build-index")
+@click.pass_context
+def item_build_index_command(ctx: click.Context) -> int:
+    """Build the semantic search vector index from your Zotero library."""
+    runtime = current_runtime(ctx)
+    result = semantic.build_index(str(runtime.environment.sqlite_path))
+    return emit_js(ctx, result)
+
+
 @item.command("update")
 @click.argument("item_key")
 @click.option("--field", "fields", multiple=True, help="Field to update as key=value. Repeatable.")

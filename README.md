@@ -260,7 +260,7 @@ cli-anything-zotero sync
 | `ZOTERO_EMBED_API` | `http://127.0.0.1:8080/v1/embeddings` | OpenAI-compatible embedding API endpoint |
 | `ZOTERO_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
 | `ZOTERO_EMBED_KEY` | *(empty)* | API key for embedding service |
-| `ZOTERO_VECTOR_DB` | `~/Zotero/zotero-mcp-vectors.sqlite` | Path to vector database for semantic search |
+| `ZOTERO_VECTOR_DB` | `~/Zotero/cli-anything-vectors.sqlite` | Path to vector database for semantic search |
 
 ### Semantic Search Setup
 
@@ -272,13 +272,13 @@ Semantic search requires two things:
    - [OMLX](https://github.com/nickhardware/omlx) or any local embedding server
    - OpenAI API (`ZOTERO_EMBED_API=https://api.openai.com/v1/embeddings`)
 
-2. **A pre-built vector index** -- the tool reads from an existing SQLite vector database (768-dimensional vectors). The [zotero-mcp plugin](https://github.com/SilentEchoes77/zotero-mcp-plugin) can build this index automatically.
+2. **Build the vector index** -- run `cli-anything-zotero item build-index` to generate embeddings for all items in your library. The index is stored in `~/Zotero/cli-anything-vectors.sqlite`.
 
 ## Limitations
 
 - **Zotero must be running** -- all backends connect to Zotero's HTTP server or read its SQLite database.
 - **CLI Bridge plugin required for JS bridge commands** -- install via `cli-anything-zotero app install-plugin`. The plugin registers the `/cli-bridge/eval` endpoint on Zotero startup. On macOS, AppleScript fallback is available but deprecated.
-- **Semantic search requires setup** -- needs a local embedding API and pre-built vector index.
+- **Semantic search requires setup** -- needs a local embedding API and index build (`item build-index`).
 
 ## License
 
@@ -465,19 +465,19 @@ cli-anything-zotero sync
 | `ZOTERO_EMBED_API` | `http://127.0.0.1:8080/v1/embeddings` | 嵌入 API 地址 |
 | `ZOTERO_EMBED_MODEL` | `nomic-embed-text` | 嵌入模型名 |
 | `ZOTERO_EMBED_KEY` | *（空）* | 嵌入 API 密钥 |
-| `ZOTERO_VECTOR_DB` | `~/Zotero/zotero-mcp-vectors.sqlite` | 向量数据库路径 |
+| `ZOTERO_VECTOR_DB` | `~/Zotero/cli-anything-vectors.sqlite` | 向量数据库路径 |
 
 ### 语义搜索配置
 
 需要两样东西：
 1. **嵌入 API** -- 任何兼容 OpenAI `/v1/embeddings` 的服务（Ollama、LM Studio、OMLX 等）
-2. **预建向量索引** -- 工具读取现有的 SQLite 向量数据库（768 维），可通过 [zotero-mcp 插件](https://github.com/SilentEchoes77/zotero-mcp-plugin) 自动建立
+2. **构建向量索引** -- 运行 `cli-anything-zotero item build-index` 为文献库生成嵌入向量，索引存储在 `~/Zotero/cli-anything-vectors.sqlite`
 
 ## 限制
 
 - **Zotero 必须运行** -- 所有后端连接 Zotero 的 HTTP 服务或读取其 SQLite 数据库
 - **JS 桥命令需安装 CLI Bridge 插件** -- 运行 `cli-anything-zotero app install-plugin` 安装，插件在 Zotero 启动时自动注册端点。macOS 上保留 AppleScript 降级（已弃用）
-- **语义搜索需配置** -- 需要本地嵌入 API 和预建向量索引
+- **语义搜索需配置** -- 需要本地嵌入 API 并运行 `item build-index` 构建索引
 
 ## 许可证
 
