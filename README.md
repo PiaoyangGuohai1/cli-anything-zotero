@@ -2,7 +2,9 @@
 
 **Full-featured CLI for Zotero reference management** -- search, import, export, PDF management, semantic search, and more, all from the command line.
 
-> [**中文文档**](#中文文档) | **English**
+> [**中文文档**](#中文文档) | **English** | **WeChat Group 微信交流群** 👇
+
+<img src="docs/images/wechat-group.jpg" alt="WeChat Group QR Code" width="250">
 
 Built on the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) framework by [HKUDS](https://github.com/HKUDS). Designed for AI agents (Claude Code, Cursor, Codex, etc.) and power users who need programmatic access to a running Zotero instance without touching the GUI.
 
@@ -56,7 +58,28 @@ The plugin works on **all platforms** (macOS, Windows, Linux). On macOS, an Appl
 
 ## Installation
 
-### macOS / Linux
+### Step 1: Install Python and Git
+
+**macOS / Linux** -- Python 3.10+ and git are usually pre-installed. If not:
+
+```bash
+# macOS
+brew install python git
+
+# Ubuntu/Debian
+sudo apt install python3 python3-pip git
+```
+
+**Windows** -- Python and git are NOT pre-installed. Open PowerShell and run:
+
+```powershell
+winget install Python.Python.3.12
+winget install Git.Git
+```
+
+> **Important:** After installing, you must **close and reopen PowerShell** for the `python`, `pip`, and `git` commands to become available.
+
+### Step 2: Install the CLI Tool
 
 ```bash
 git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
@@ -64,42 +87,54 @@ cd cli-anything-zotero
 pip install -e .
 ```
 
-### Windows (PowerShell)
+If you don't want to install git, you can also run:
 
-```powershell
-# Option 1: If you have git installed
-git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
-cd cli-anything-zotero
-pip install -e .
-
-# Option 2: No git required
+```bash
 pip install https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip
 ```
 
-> **Tip:** If you need git on Windows, run `winget install Git.Git` and reopen PowerShell.
+### Step 3: Install the JS Bridge Plugin into Zotero (one-time)
 
-### Setup the JS Bridge Plugin (all platforms, one-time)
+The JS Bridge plugin is what allows the CLI to execute privileged operations in Zotero (import, PDF management, sync, etc.). **Without it, only read-only SQLite commands will work.**
 
 ```bash
-# Generate the plugin .xpi file
+# Make sure Zotero is running first, then:
 cli-anything-zotero app install-plugin
 ```
 
-If the JS bridge is already active (e.g. on macOS with AppleScript fallback), the plugin will be installed automatically. Otherwise, install manually:
+**On first install, automatic plugin loading is NOT supported** -- Zotero 7/8 requires manual plugin installation through its UI:
 
-1. Open Zotero → **Tools → Add-ons** (or **Plugins**)
-2. Click the **gear icon ⚙** → **Install Plugin From File...**
-3. Select the `.xpi` file shown in the command output
-4. Restart Zotero
+1. The command above generates a `.xpi` file and prints its path
+2. In Zotero, go to **Tools → Plugins** (or **Add-ons**)
+3. Click the **gear icon ⚙** in the top-right → **Install Plugin From File...**
+4. Navigate to and select the `.xpi` file shown in the command output
+5. **Restart Zotero** after installation
 
-After installation, verify:
+> **Note:** Once the plugin is installed and active, future runs of `app install-plugin` (e.g. after upgrades) will install automatically without manual steps.
+
+### Step 4: Verify
 
 ```bash
+# Check plugin and endpoint status
 cli-anything-zotero app plugin-status --json
-# Should show: "plugin_installed": true, "endpoint_active": true
+# ✓ Should show: "plugin_installed": true, "endpoint_active": true
 
+# Check Zotero connectivity
 cli-anything-zotero app ping
+
+# Test the JS bridge
+cli-anything-zotero js "return 'Hello from Zotero!'"
 ```
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `git`/`pip` not recognized (Windows) | Close and reopen PowerShell after installing Python/Git |
+| `Cannot resolve Zotero profile directory` | Make sure Zotero has been launched at least once |
+| Plugin not appearing after install | Did you restart Zotero? The plugin only loads on startup |
+| `endpoint_active: false` after restart | The plugin may have failed to load -- reinstall via Zotero UI |
+| `--json` flag not recognized | Put `--json` **before** the subcommand, or upgrade to the latest version which supports `--json` anywhere |
 
 ## Quick Start
 
@@ -245,12 +280,6 @@ Semantic search requires two things:
 - **CLI Bridge plugin required for JS bridge commands** -- install via `cli-anything-zotero app install-plugin`. The plugin registers the `/cli-bridge/eval` endpoint on Zotero startup. On macOS, AppleScript fallback is available but deprecated.
 - **Semantic search requires setup** -- needs a local embedding API and pre-built vector index.
 
-## Community
-
-Join the WeChat group for discussion and support:
-
-<img src="docs/images/wechat-group.jpg" alt="WeChat Group QR Code" width="300">
-
 ## License
 
 Apache 2.0 -- same as the parent [CLI-Anything](https://github.com/HKUDS/CLI-Anything) project.
@@ -311,35 +340,78 @@ CLI 调用 → HTTP POST → Zotero 在特权上下文中执行 JS → 返回 JS
 
 ## 安装
 
+### 第一步：安装 Python 和 Git
+
+**macOS / Linux** -- 通常已预装。如果没有：
+
+```bash
+# macOS
+brew install python git
+
+# Ubuntu/Debian
+sudo apt install python3 python3-pip git
+```
+
+**Windows** -- Python 和 Git 默认未安装，打开 PowerShell 运行：
+
+```powershell
+winget install Python.Python.3.12
+winget install Git.Git
+```
+
+> **重要：** 安装完成后必须**关闭并重新打开 PowerShell**，`python`、`pip`、`git` 命令才会生效。
+
+### 第二步：安装 CLI 工具
+
 ```bash
 git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
 cd cli-anything-zotero
 pip install -e .
 ```
 
-Windows 用户如未安装 git/Python，先运行 `winget install Python.Python.3.12` 和 `winget install Git.Git`，重新打开 PowerShell。
+不想装 git 也可以直接：`pip install https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip`
 
-### 安装 JS 桥插件（一次性操作）
+### 第三步：安装 JS 桥插件到 Zotero（一次性操作）
+
+JS 桥插件让 CLI 能在 Zotero 中执行特权操作（导入、PDF 管理、同步等）。**不装插件的话，只有 SQLite 只读命令能用。**
 
 ```bash
+# 确保 Zotero 正在运行，然后：
 cli-anything-zotero app install-plugin
 ```
 
-如果 JS 桥已激活（如 macOS 上的 AppleScript 降级），插件会自动安装。否则需手动安装：
+**首次安装需要手动操作** -- Zotero 7/8 不支持自动加载外部插件，必须通过 UI 安装：
 
-1. 打开 Zotero → **工具 → 插件**
-2. 点击右上角 **齿轮图标 ⚙** → **Install Plugin From File...**
-3. 选择命令输出中显示的 `.xpi` 文件路径
-4. 重启 Zotero
+1. 上面的命令会生成一个 `.xpi` 文件并显示其路径
+2. 在 Zotero 中打开 **工具 → 插件**
+3. 点击右上角 **齿轮图标 ⚙** → **Install Plugin From File...**
+4. 选择命令输出中显示的 `.xpi` 文件
+5. **重启 Zotero**
 
-验证：
+> **提示：** 插件装好激活后，以后再运行 `app install-plugin`（如升级版本时）会自动安装，无需手动操作。
+
+### 第四步：验证
 
 ```bash
+# 检查插件和端点状态
 cli-anything-zotero app plugin-status --json
-# 应显示: "plugin_installed": true, "endpoint_active": true
+# ✓ 应显示: "plugin_installed": true, "endpoint_active": true
 
+# 检查 Zotero 连接
 cli-anything-zotero app ping
+
+# 测试 JS 桥
+cli-anything-zotero js "return 'Hello from Zotero!'"
 ```
+
+### 常见问题
+
+| 问题 | 解决方案 |
+|------|----------|
+| Windows 上 `git`/`pip` 提示"无法识别" | 安装 Python/Git 后必须**重新打开 PowerShell** |
+| `Cannot resolve Zotero profile directory` | 确保 Zotero 至少启动过一次 |
+| 安装插件后在 Zotero 中看不到 | 是否重启了 Zotero？插件只在启动时加载 |
+| `endpoint_active: false` | 插件可能加载失败，通过 Zotero UI 重新安装 .xpi |
 
 ## 快速上手
 
@@ -406,12 +478,6 @@ cli-anything-zotero sync
 - **Zotero 必须运行** -- 所有后端连接 Zotero 的 HTTP 服务或读取其 SQLite 数据库
 - **JS 桥命令需安装 CLI Bridge 插件** -- 运行 `cli-anything-zotero app install-plugin` 安装，插件在 Zotero 启动时自动注册端点。macOS 上保留 AppleScript 降级（已弃用）
 - **语义搜索需配置** -- 需要本地嵌入 API 和预建向量索引
-
-## 交流群
-
-扫码加入微信交流群：
-
-<img src="docs/images/wechat-group.jpg" alt="微信交流群二维码" width="300">
 
 ## 许可证
 
