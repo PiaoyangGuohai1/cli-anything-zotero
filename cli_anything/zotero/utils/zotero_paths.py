@@ -320,9 +320,22 @@ def install_plugin_xpi(profile_dir: Path) -> Path:
     ext_dir.mkdir(parents=True, exist_ok=True)
 
     xpi_path = ext_dir / f"{PLUGIN_ADDON_ID}.xpi"
-    with zipfile.ZipFile(xpi_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(manifest, "manifest.json")
-        zf.write(bootstrap, "bootstrap.js")
+
+    # Use system zip command to create the xpi. Python's zipfile module produces
+    # archives that Zotero/Firefox's addon manager rejects as corrupt.
+    zip_exe = shutil.which("zip")
+    if zip_exe:
+        import subprocess
+        # -j: junk (don't record) directory names
+        subprocess.run(
+            [zip_exe, "-j", str(xpi_path), str(manifest), str(bootstrap)],
+            check=True, capture_output=True,
+        )
+    else:
+        # Fallback for systems without zip (rare). Zotero UI install may be needed.
+        with zipfile.ZipFile(xpi_path, "w", zipfile.ZIP_STORED) as zf:
+            zf.write(manifest, "manifest.json")
+            zf.write(bootstrap, "bootstrap.js")
     return xpi_path
 
 
