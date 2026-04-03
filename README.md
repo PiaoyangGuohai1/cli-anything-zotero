@@ -245,6 +245,12 @@ Semantic search requires two things:
 - **CLI Bridge plugin required for JS bridge commands** -- install via `cli-anything-zotero app install-plugin`. The plugin registers the `/cli-bridge/eval` endpoint on Zotero startup. On macOS, AppleScript fallback is available but deprecated.
 - **Semantic search requires setup** -- needs a local embedding API and pre-built vector index.
 
+## Community
+
+Join the WeChat group for discussion and support:
+
+<img src="docs/images/wechat-group.jpg" alt="WeChat Group QR Code" width="300">
+
 ## License
 
 Apache 2.0 -- same as the parent [CLI-Anything](https://github.com/HKUDS/CLI-Anything) project.
@@ -400,6 +406,12 @@ cli-anything-zotero sync
 - **Zotero 必须运行** -- 所有后端连接 Zotero 的 HTTP 服务或读取其 SQLite 数据库
 - **JS 桥命令需安装 CLI Bridge 插件** -- 运行 `cli-anything-zotero app install-plugin` 安装，插件在 Zotero 启动时自动注册端点。macOS 上保留 AppleScript 降级（已弃用）
 - **语义搜索需配置** -- 需要本地嵌入 API 和预建向量索引
+
+## 交流群
+
+扫码加入微信交流群：
+
+<img src="docs/images/wechat-group.jpg" alt="微信交流群二维码" width="300">
 
 ## 许可证
 
