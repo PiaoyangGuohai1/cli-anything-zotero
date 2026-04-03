@@ -56,16 +56,48 @@ The plugin works on **all platforms** (macOS, Windows, Linux). On macOS, an Appl
 
 ## Installation
 
+### macOS / Linux
+
 ```bash
 git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
 cd cli-anything-zotero
 pip install -e .
+```
 
-# Install the JS Bridge plugin into Zotero (one-time setup)
+### Windows (PowerShell)
+
+```powershell
+# Option 1: If you have git installed
+git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
+cd cli-anything-zotero
+pip install -e .
+
+# Option 2: No git required
+pip install https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip
+```
+
+> **Tip:** If you need git on Windows, run `winget install Git.Git` and reopen PowerShell.
+
+### Setup the JS Bridge Plugin (all platforms, one-time)
+
+```bash
+# Generate the plugin .xpi file
 cli-anything-zotero app install-plugin
-# Restart Zotero after installing the plugin
+```
 
-# Verify
+If the JS bridge is already active (e.g. on macOS with AppleScript fallback), the plugin will be installed automatically. Otherwise, install manually:
+
+1. Open Zotero → **Tools → Add-ons** (or **Plugins**)
+2. Click the **gear icon ⚙** → **Install Plugin From File...**
+3. Select the `.xpi` file shown in the command output
+4. Restart Zotero
+
+After installation, verify:
+
+```bash
+cli-anything-zotero app plugin-status --json
+# Should show: "plugin_installed": true, "endpoint_active": true
+
 cli-anything-zotero app ping
 ```
 
@@ -277,12 +309,29 @@ CLI 调用 → HTTP POST → Zotero 在特权上下文中执行 JS → 返回 JS
 git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
 cd cli-anything-zotero
 pip install -e .
+```
 
-# 安装 JS 桥插件到 Zotero（一次性操作）
+Windows 用户如未安装 git/Python，先运行 `winget install Python.Python.3.12` 和 `winget install Git.Git`，重新打开 PowerShell。
+
+### 安装 JS 桥插件（一次性操作）
+
+```bash
 cli-anything-zotero app install-plugin
-# 安装后需重启 Zotero
+```
 
-# 验证
+如果 JS 桥已激活（如 macOS 上的 AppleScript 降级），插件会自动安装。否则需手动安装：
+
+1. 打开 Zotero → **工具 → 插件**
+2. 点击右上角 **齿轮图标 ⚙** → **Install Plugin From File...**
+3. 选择命令输出中显示的 `.xpi` 文件路径
+4. 重启 Zotero
+
+验证：
+
+```bash
+cli-anything-zotero app plugin-status --json
+# 应显示: "plugin_installed": true, "endpoint_active": true
+
 cli-anything-zotero app ping
 ```
 
