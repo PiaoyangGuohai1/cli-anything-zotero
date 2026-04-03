@@ -10,6 +10,11 @@ description: >-
 
 Agent-native CLI for Zotero 7/8 desktop. 40+ commands across four backends.
 
+## Before You Start
+
+Run `cli-anything-zotero app check-update` at the beginning of a session.
+If it reports an update, ask the user to run the upgrade command before proceeding.
+
 ## When to Use
 
 - User asks to search, find, or look up papers in their Zotero library
@@ -142,7 +147,7 @@ cli-anything-zotero collection rename COLLECTION_KEY --name "New Name"
 cli-anything-zotero collection delete COLLECTION_KEY --confirm
 
 # Add/remove items from collection
-cli-anything-zotero item add-to-collection ITEM_KEY COLLECTION_KEY --experimental
+cli-anything-zotero item add-to-collection ITEM_KEY COLLECTION_KEY
 cli-anything-zotero collection remove-item COLLECTION_KEY ITEM_KEY
 ```
 
@@ -169,9 +174,9 @@ cli-anything-zotero repl
 
 ## Important Constraints
 
-- **macOS only**: JS bridge commands (attach, find-pdf, update, tag, import doi/pmid, sync, stats, etc.) require macOS for AppleScript fallback on first call.
+- **All platforms**: Works on macOS, Windows, and Linux with the JS Bridge plugin installed.
 - **Zotero must be running**: All commands connect to Zotero's HTTP server (port 23119) or read its SQLite database.
-- **First JS bridge call per Zotero session**: Brief UI popup to register HTTP endpoint. All subsequent calls are silent.
+- **JS Bridge plugin required**: Install via `cli-anything-zotero app install-plugin`. Once installed, all JS bridge commands work silently.
 - **Semantic search**: Requires `ZOTERO_EMBED_API`, `ZOTERO_EMBED_MODEL`, and `ZOTERO_EMBED_KEY` environment variables, plus a pre-built vector index at `ZOTERO_VECTOR_DB`.
 - **Item references**: Most commands accept a Zotero item key (8-char alphanumeric like `9LPV3KTS`), title fragment, or numeric ID.
 - **Collection references**: Accept collection key or numeric ID.

@@ -397,6 +397,82 @@ def app_plugin_status(ctx: click.Context) -> int:
     return 0
 
 
+@app.command("check-update")
+@click.pass_context
+def app_check_update(ctx: click.Context) -> int:
+    """Check if a newer version is available on GitHub."""
+    import time
+    import urllib.request
+    from pathlib import Path
+
+    cache_dir = Path("~/.config/cli-anything-zotero").expanduser()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / "update-check.json"
+
+    now = time.time()
+    # Read cache — skip network if checked within 24h
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            if now - cached.get("checked_at", 0) < 86400:
+                if cached.get("update_available"):
+                    emit(ctx, {
+                        "update_available": True,
+                        "current_version": __version__,
+                        "latest_version": cached.get("latest_version", "unknown"),
+                        "message": f"Update available: {__version__} -> {cached['latest_version']}. "
+                                   f"Run: pip install -U https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip",
+                    })
+                    return 0
+                # No update
+                return 0
+        except Exception:
+            pass
+
+    # Fetch latest version from GitHub
+    try:
+        url = "https://raw.githubusercontent.com/PiaoyangGuohai1/cli-anything-zotero/main/cli_anything/zotero/__init__.py"
+        req = urllib.request.Request(url, headers={"User-Agent": "cli-anything-zotero"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            content = resp.read().decode("utf-8")
+        latest = "unknown"
+        for line in content.splitlines():
+            if line.startswith("__version__"):
+                latest = line.split("=", 1)[1].strip().strip("\"'")
+                break
+    except Exception:
+        # Network error — skip silently
+        return 0
+
+    update_available = latest != "unknown" and latest != __version__
+    cache_data = {
+        "checked_at": now,
+        "current_version": __version__,
+        "latest_version": latest,
+        "update_available": update_available,
+    }
+    try:
+        cache_file.write_text(json.dumps(cache_data), encoding="utf-8")
+    except Exception:
+        pass
+
+    if update_available:
+        emit(ctx, {
+            "update_available": True,
+            "current_version": __version__,
+            "latest_version": latest,
+            "message": f"Update available: {__version__} -> {latest}. "
+                       f"Run: pip install -U https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip",
+        })
+    else:
+        emit(ctx, {
+            "update_available": False,
+            "current_version": __version__,
+            "message": "You are on the latest version.",
+        })
+    return 0
+
+
 @app.command("uninstall-plugin")
 @click.pass_context
 def app_uninstall_plugin(ctx: click.Context) -> int:
