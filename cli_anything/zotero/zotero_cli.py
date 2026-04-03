@@ -635,10 +635,11 @@ def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int
 
 @item.command("find-pdf")
 @click.argument("item_key")
+@click.option("--timeout", default=30, help="Seconds to wait for PDF download (default: 30).")
 @click.pass_context
-def item_find_pdf_command(ctx: click.Context, item_key: str) -> int:
+def item_find_pdf_command(ctx: click.Context, item_key: str, timeout: int) -> int:
     """Trigger Zotero's 'Find Available PDF' for a single item (via JS bridge)."""
-    result = jsbridge.find_pdf(item_key)
+    result = jsbridge.find_pdf(item_key, timeout=timeout)
     return emit_js(ctx, result)
 
 

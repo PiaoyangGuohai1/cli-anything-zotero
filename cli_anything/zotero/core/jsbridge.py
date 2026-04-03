@@ -270,15 +270,39 @@ def attach_pdf(item_key: str, pdf_path: str, *, library_id: int = 1) -> dict:
     return execute_js(js, wait_seconds=4)
 
 
-def find_pdf(item_key: str, *, library_id: int = 1) -> dict:
-    """Trigger 'Find Available PDF' for a single Zotero item."""
+def find_pdf(item_key: str, *, library_id: int = 1, timeout: int = 30) -> dict:
+    """Trigger 'Find Available PDF' for a single Zotero item.
+
+    Three possible outcomes:
+      FOUND:<key>      – PDF downloaded and attached
+      NOT_FOUND:<msg>  – Zotero confirmed no PDF available
+      timed out        – network slow; we do a follow-up check for attachments
+    """
     js = (
         f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
         f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
         f"var att = await Zotero.Attachments.addAvailablePDF(item); "
         f"return att ? 'FOUND: ' + att.key : 'NOT_FOUND: no PDF available for ' + item.getField('title').substring(0,60);"
     )
-    return execute_js(js, wait_seconds=15)
+    result = execute_js(js, wait_seconds=timeout)
+
+    # If the primary call succeeded or returned a clear error, return as-is
+    if result.get("ok") or (result.get("error") and "timed out" not in str(result.get("error", "")).lower()):
+        return result
+
+    # Timed out: the download may still have completed in the background.
+    # Do a quick follow-up check for a PDF attachment on this item.
+    check_js = (
+        f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
+        f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+        f"var aids = item.getAttachments(); "
+        f"for (var id of aids) {{ var a = Zotero.Items.get(id); "
+        f"  if (a && a.attachmentContentType === 'application/pdf') "
+        f"    return 'FOUND: ' + a.key; }} "
+        f"return 'TIMEOUT: PDF lookup timed out after {timeout}s and no PDF attachment found yet. "
+        f"Zotero may still be downloading — retry shortly or check Zotero manually.';"
+    )
+    return execute_js(check_js, wait_seconds=10)
 
 
 def update_item_fields(item_key: str, fields_dict: dict[str, str], *, library_id: int = 1) -> dict:
