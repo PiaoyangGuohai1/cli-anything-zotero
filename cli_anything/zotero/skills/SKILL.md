@@ -1,185 +1,209 @@
 ---
-name: >-
-  cli-anything-zotero
+name: cli-anything-zotero
 description: >-
-  CLI harness for Zotero.
+  Full-featured CLI for Zotero reference management. Search, import by DOI/PMID,
+  export BibTeX, attach PDFs, semantic search, manage tags/collections, and more.
+  Use this tool whenever you need to interact with a Zotero library programmatically.
 ---
 
 # cli-anything-zotero
 
-`cli-anything-zotero` is an agent-native CLI for Zotero desktop. It does not reimplement Zotero. Instead, it composes Zotero's real local surfaces:
+Agent-native CLI for Zotero 7/8 desktop. 40+ commands across four backends.
 
-## Installation
+## When to Use
+
+- User asks to search, find, or look up papers in their Zotero library
+- User needs to import a paper by DOI or PMID
+- User wants to export citations or BibTeX
+- User needs to attach a PDF to a Zotero item
+- User wants to find available PDFs for items missing them
+- User asks about collection statistics, duplicates, or annotations
+- User needs semantic search ("find papers similar to X")
+- User wants to update metadata, tags, or manage collections
+
+## Key Commands by Task
+
+### Search & Discovery
 
 ```bash
-pip install -e .
+# Keyword search
+cli-anything-zotero item find "query" --limit 10
+
+# Full-text search inside PDFs
+cli-anything-zotero item search-fulltext "query" --limit 10
+
+# Semantic search (requires ZOTERO_EMBED_* env vars)
+cli-anything-zotero item semantic-search "natural language query" --top-k 10
+
+# Find papers similar to a known item
+cli-anything-zotero item similar ITEM_KEY --top-k 5
+
+# Search annotations/highlights by keyword or color
+cli-anything-zotero item search-annotations "keyword" --color "#ff6666" --limit 10
+
+# Find duplicates
+cli-anything-zotero item duplicates --limit 20
 ```
 
-## Entry Points
+### Read Item Details
 
 ```bash
-cli-anything-zotero
-python -m cli_anything.zotero
+# Full item metadata (returns JSON with title, creators, DOI, tags, attachments, etc.)
+cli-anything-zotero --json item get ITEM_KEY
+
+# List attachments
+cli-anything-zotero --json item attachments ITEM_KEY
+
+# View PDF annotations
+cli-anything-zotero --json item annotations ITEM_KEY
+
+# Citation metrics from NIH iCite
+cli-anything-zotero --json item metrics PMID --pmid
+# Or by Zotero item key (auto-extracts PMID from extra field)
+cli-anything-zotero --json item metrics ITEM_KEY
 ```
+
+### Import Papers
+
+```bash
+# Import by DOI (auto-fetches all metadata)
+cli-anything-zotero import doi "10.1038/s41586-024-07871-6" --tag "review" --collection COLLECTION_KEY
+
+# Import by PMID
+cli-anything-zotero import pmid "38551621" --tag "epidemiology"
+
+# Import from file (RIS, BibTeX, etc.)
+cli-anything-zotero import file ./references.ris --collection COLLECTION_KEY
+```
+
+### Export & Citations
+
+```bash
+# Export BibTeX
+cli-anything-zotero item export ITEM_KEY --format bibtex
+
+# Other formats: ris, biblatex, csljson, csv, mods, refer
+cli-anything-zotero item export ITEM_KEY --format ris
+
+# Render citation (returns HTML)
+cli-anything-zotero item citation ITEM_KEY --style apa
+
+# Render bibliography entry
+cli-anything-zotero item bibliography ITEM_KEY --style apa
+```
+
+### PDF Management
+
+```bash
+# Attach a local PDF to an existing item
+cli-anything-zotero item attach ITEM_KEY /path/to/paper.pdf
+
+# Trigger "Find Available PDF" for one item
+cli-anything-zotero item find-pdf ITEM_KEY
+
+# Batch find PDFs for all items missing them in a collection
+cli-anything-zotero collection find-pdfs COLLECTION_KEY
+```
+
+### Write Operations
+
+```bash
+# Update metadata fields
+cli-anything-zotero item update ITEM_KEY --field title="New Title" --field DOI="10.1234/xxx"
+
+# Add/remove tags
+cli-anything-zotero item tag ITEM_KEY --add "important" --remove "unread"
+
+# Delete item (requires --confirm)
+cli-anything-zotero item delete ITEM_KEY --confirm
+```
+
+### Collection Management
+
+```bash
+# List all collections
+cli-anything-zotero collection list
+
+# Collection hierarchy
+cli-anything-zotero collection tree
+
+# Find collection by name
+cli-anything-zotero collection find "query"
+
+# Items in a collection
+cli-anything-zotero --json collection items COLLECTION_KEY
+
+# Collection statistics (total items, PDF coverage, year/journal distribution)
+cli-anything-zotero --json collection stats COLLECTION_KEY
+
+# Create / rename / delete collection
+cli-anything-zotero collection create "New Collection"
+cli-anything-zotero collection rename COLLECTION_KEY --name "New Name"
+cli-anything-zotero collection delete COLLECTION_KEY --confirm
+
+# Add/remove items from collection
+cli-anything-zotero item add-to-collection ITEM_KEY COLLECTION_KEY --experimental
+cli-anything-zotero collection remove-item COLLECTION_KEY ITEM_KEY
+```
+
+### Sync & Utilities
+
+```bash
+# Trigger Zotero sync
+cli-anything-zotero sync
+
+# Execute arbitrary Zotero JavaScript
+cli-anything-zotero js "return Zotero.Items.getAll(1).length;" --wait 5
+
+# Interactive REPL
+cli-anything-zotero repl
+```
+
+## Output Format
+
+- Use `--json` flag on the root command for machine-readable JSON output:
+  ```bash
+  cli-anything-zotero --json item find "query"
+  ```
+- Without `--json`, output is human-readable text.
 
 ## Important Constraints
 
-- `search items`, `item export`, `item citation`, and `item bibliography` require Zotero's Local API to be enabled.
-- `note add` depends on the live Zotero GUI context and expects the same library to be selected in the app.
-- Import-time PDF attachment support is limited to items created in the same connector session; arbitrary existing-item attachment upload is still out of scope.
-- Experimental SQLite write commands are local-only, user-library-only, and should be treated as non-stable power-user operations.
-- If a bare key is duplicated across libraries, set `session use-library <id>` before follow-up commands.
+- **macOS only**: JS bridge commands (attach, find-pdf, update, tag, import doi/pmid, sync, stats, etc.) require macOS for AppleScript fallback on first call.
+- **Zotero must be running**: All commands connect to Zotero's HTTP server (port 23119) or read its SQLite database.
+- **First JS bridge call per Zotero session**: Brief UI popup to register HTTP endpoint. All subsequent calls are silent.
+- **Semantic search**: Requires `ZOTERO_EMBED_API`, `ZOTERO_EMBED_MODEL`, and `ZOTERO_EMBED_KEY` environment variables, plus a pre-built vector index at `ZOTERO_VECTOR_DB`.
+- **Item references**: Most commands accept a Zotero item key (8-char alphanumeric like `9LPV3KTS`), title fragment, or numeric ID.
+- **Collection references**: Accept collection key or numeric ID.
 
-## Command Groups
+## Common Workflows
 
-### App
-
-Application and runtime inspection commands.
-
-| Command | Description |
-|---------|-------------|
-| `status` | Execute `status`. |
-| `version` | Execute `version`. |
-| `launch` | Execute `launch`. |
-| `enable-local-api` | Execute `enable-local-api`. |
-| `ping` | Execute `ping`. |
-
-### Collection
-
-Collection inspection and selection commands.
-
-| Command | Description |
-|---------|-------------|
-| `list` | Execute `list`. |
-| `find` | Execute `find`. |
-| `tree` | Execute `tree`. |
-| `get` | Execute `get`. |
-| `items` | Execute `items`. |
-| `use-selected` | Execute `use-selected`. |
-| `create` | Execute `create`. |
-
-### Item
-
-Item inspection and rendering commands.
-
-| Command | Description |
-|---------|-------------|
-| `list` | Execute `list`. |
-| `find` | Execute `find`. |
-| `get` | Execute `get`. |
-| `children` | Execute `children`. |
-| `notes` | Execute `notes`. |
-| `attachments` | Execute `attachments`. |
-| `file` | Execute `file`. |
-| `export` | Execute `export`. |
-| `citation` | Execute `citation`. |
-| `bibliography` | Execute `bibliography`. |
-| `context` | Execute `context`. |
-| `analyze` | Execute `analyze`. |
-| `add-to-collection` | Execute `add-to-collection`. |
-| `move-to-collection` | Execute `move-to-collection`. |
-
-### Search
-
-Saved-search inspection commands.
-
-| Command | Description |
-|---------|-------------|
-| `list` | Execute `list`. |
-| `get` | Execute `get`. |
-| `items` | Execute `items`. |
-
-### Tag
-
-Tag inspection commands.
-
-| Command | Description |
-|---------|-------------|
-| `list` | Execute `list`. |
-| `items` | Execute `items`. |
-
-### Style
-
-Installed CSL style inspection commands.
-
-| Command | Description |
-|---------|-------------|
-| `list` | Execute `list`. |
-
-### Import
-
-Official Zotero import and write commands.
-
-| Command | Description |
-|---------|-------------|
-| `file` | Execute `file`. |
-| `json` | Execute `json`. |
-
-### Note
-
-Read and add child notes.
-
-| Command | Description |
-|---------|-------------|
-| `get` | Execute `get`. |
-| `add` | Execute `add`. |
-
-### Session
-
-Session and REPL context commands.
-
-| Command | Description |
-|---------|-------------|
-| `status` | Execute `status`. |
-| `use-library` | Execute `use-library`. |
-| `use-collection` | Execute `use-collection`. |
-| `use-item` | Execute `use-item`. |
-| `use-selected` | Execute `use-selected`. |
-| `clear-library` | Execute `clear-library`. |
-| `clear-collection` | Execute `clear-collection`. |
-| `clear-item` | Execute `clear-item`. |
-| `history` | Execute `history`. |
-
-## Examples
-
-### Runtime Status
-
-Inspect Zotero paths and backend availability.
-
+### "Find papers about X and export BibTeX"
 ```bash
-cli-anything-zotero app status --json
+cli-anything-zotero --json item find "X" --limit 20
+# Pick relevant keys from output, then:
+cli-anything-zotero item export KEY1 --format bibtex
+cli-anything-zotero item export KEY2 --format bibtex
 ```
 
-### Read Selected Collection
-
-Persist the collection selected in the Zotero GUI.
-
+### "Import a paper and attach its PDF"
 ```bash
-cli-anything-zotero collection use-selected --json
+cli-anything-zotero import doi "10.xxxx/yyyy"
+# Note the item key from output, then:
+cli-anything-zotero item attach ITEM_KEY /path/to/paper.pdf
 ```
 
-### Render Citation
-
-Render a citation using Zotero's Local API.
-
+### "What papers in collection X are missing PDFs?"
 ```bash
-cli-anything-zotero item citation <item-key> --style apa --locale en-US --json
+cli-anything-zotero --json collection stats COLLECTION_KEY
+# Shows total vs withPDF vs noPDF count
+# Then batch-find:
+cli-anything-zotero collection find-pdfs COLLECTION_KEY
 ```
 
-### Add Child Note
-
-Create a child note under an existing Zotero item.
-
+### "Find papers similar to one I'm reading"
 ```bash
-cli-anything-zotero note add <item-key> --text "Key takeaway" --json
-```
-
-### Build LLM Context
-
-Assemble structured context for downstream model analysis.
-
-```bash
-cli-anything-zotero item context <item-key> --include-notes --include-links --json
+cli-anything-zotero --json item similar ITEM_KEY --top-k 10
 ```
 
 ## Version
