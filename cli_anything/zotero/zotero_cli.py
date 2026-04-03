@@ -844,11 +844,15 @@ def item_analyze_command(
 @item.command("add-to-collection")
 @click.argument("item_ref")
 @click.argument("collection_ref")
-@click.option("--experimental", "experimental_mode", is_flag=True, help="Acknowledge experimental direct SQLite write mode.")
+@click.option("--experimental", "experimental_mode", is_flag=True, help="Force experimental direct SQLite write mode (Zotero must be closed).")
 @click.pass_context
 def item_add_to_collection_command(ctx: click.Context, item_ref: str, collection_ref: str, experimental_mode: bool) -> int:
-    _require_experimental_flag(experimental_mode, "item add-to-collection")
-    emit(ctx, experimental.add_item_to_collection(current_runtime(ctx), item_ref, collection_ref, session=current_session()))
+    runtime = current_runtime(ctx)
+    if experimental_mode:
+        emit(ctx, experimental.add_item_to_collection(runtime, item_ref, collection_ref, session=current_session()))
+    else:
+        result = jsbridge.add_to_collection(item_ref, collection_ref)
+        emit_js(ctx, result)
     return 0
 
 

@@ -344,21 +344,32 @@ def manage_tags(item_key: str, add_tags: list[str], remove_tags: list[str], *, l
     return execute_js(js, wait_seconds=4)
 
 
-def import_from_doi(doi: str, *, collection_key: str | None = None, tags: list[str] | None = None, library_id: int = 1) -> dict:
-    """Import an item into Zotero by DOI using the built-in translator."""
-    safe_doi = doi.replace("'", "\\'")
-    collection_js = ""
+def _build_post_import_js(collection_key: str | None, tags: list[str] | None, library_id: int) -> str:
+    """Build JS snippet for adding to collection and tagging after import.
+
+    Uses Zotero.DB.executeTransaction() to wrap collection/tag operations
+    in a proper transaction, since translate.translate() has already committed
+    its own transaction by the time these run.
+    """
+    parts: list[str] = []
     if collection_key:
-        collection_js = (
+        parts.append(
             f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
-            f"if (col) {{ await col.addItem(item.id); }} "
+            f"if (col) {{ item.addToCollection(col.id); }}"
         )
-    tag_js = ""
     if tags:
         for t in tags:
             safe = t.replace("'", "\\'")
-            tag_js += f"item.addTag('{safe}'); "
-        tag_js += "await item.saveTx(); "
+            parts.append(f"item.addTag('{safe}');")
+    if collection_key or tags:
+        parts.append("await item.saveTx();")
+    return " ".join(parts)
+
+
+def import_from_doi(doi: str, *, collection_key: str | None = None, tags: list[str] | None = None, library_id: int = 1) -> dict:
+    """Import an item into Zotero by DOI using the built-in translator."""
+    safe_doi = doi.replace("'", "\\'")
+    post_import_js = _build_post_import_js(collection_key, tags, library_id)
     js = (
         f"var translate = new Zotero.Translate.Search(); "
         f"translate.setIdentifier({{DOI: '{safe_doi}'}}); "
@@ -367,7 +378,7 @@ def import_from_doi(doi: str, *, collection_key: str | None = None, tags: list[s
         f"var items = await translate.translate({{libraryID: {library_id}}}); "
         f"if (!items || !items.length) {{ return 'ERROR: no results for DOI {safe_doi}'; }} "
         f"var item = items[0]; "
-        f"{collection_js}{tag_js}"
+        f"{post_import_js} "
         f"return 'OK: imported ' + item.getField('title').substring(0,60) + ' (key: ' + item.key + ')';"
     )
     return execute_js(js, wait_seconds=30)
@@ -376,18 +387,7 @@ def import_from_doi(doi: str, *, collection_key: str | None = None, tags: list[s
 def import_from_pmid(pmid: str, *, collection_key: str | None = None, tags: list[str] | None = None, library_id: int = 1) -> dict:
     """Import an item into Zotero by PMID using the built-in translator."""
     safe_pmid = pmid.replace("'", "\\'")
-    collection_js = ""
-    if collection_key:
-        collection_js = (
-            f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
-            f"if (col) {{ await col.addItem(item.id); }} "
-        )
-    tag_js = ""
-    if tags:
-        for t in tags:
-            safe = t.replace("'", "\\'")
-            tag_js += f"item.addTag('{safe}'); "
-        tag_js += "await item.saveTx(); "
+    post_import_js = _build_post_import_js(collection_key, tags, library_id)
     js = (
         f"var translate = new Zotero.Translate.Search(); "
         f"translate.setIdentifier({{PMID: '{safe_pmid}'}}); "
@@ -396,7 +396,7 @@ def import_from_pmid(pmid: str, *, collection_key: str | None = None, tags: list
         f"var items = await translate.translate({{libraryID: {library_id}}}); "
         f"if (!items || !items.length) {{ return 'ERROR: no results for PMID {safe_pmid}'; }} "
         f"var item = items[0]; "
-        f"{collection_js}{tag_js}"
+        f"{post_import_js} "
         f"return 'OK: imported ' + item.getField('title').substring(0,60) + ' (key: ' + item.key + ')';"
     )
     return execute_js(js, wait_seconds=15)
@@ -440,6 +440,20 @@ def get_annotations(item_key: str, *, library_id: int = 1) -> dict:
         f"  }} "
         f"}} "
         f"return {{count: allAnnots.length, annotations: allAnnots}};"
+    )
+    return execute_js(js, wait_seconds=5)
+
+
+def add_to_collection(item_key: str, collection_key: str, *, library_id: int = 1) -> dict:
+    """Add an item to a collection via JS Bridge (works while Zotero is running)."""
+    js = (
+        f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
+        f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+        f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
+        f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
+        f"item.addToCollection(col.id); "
+        f"await item.saveTx(); "
+        f"return 'OK: added ' + item.getField('title').substring(0,60) + ' to ' + col.name;"
     )
     return execute_js(js, wait_seconds=5)
 

@@ -232,16 +232,24 @@ def resolve_collection(sqlite_path: Path | str, ref: str | int, *, library_id: i
     with closing(connect_readonly(sqlite_path)) as conn:
         if _is_numeric_ref(ref):
             row = conn.execute(
-                "SELECT collectionID, key, collectionName, parentCollectionID, libraryID, version FROM collections WHERE collectionID = ?",
+                "SELECT c.collectionID, c.key, c.collectionName, c.parentCollectionID, c.libraryID, c.version, "
+                "COUNT(ci.itemID) AS itemCount FROM collections c "
+                "LEFT JOIN collectionItems ci ON ci.collectionID = c.collectionID "
+                "WHERE c.collectionID = ? GROUP BY c.collectionID",
                 (int(ref),),
             ).fetchone()
         else:
             params: list[Any] = [str(ref)]
-            sql = "SELECT collectionID, key, collectionName, parentCollectionID, libraryID, version FROM collections WHERE key = ?"
+            sql = (
+                "SELECT c.collectionID, c.key, c.collectionName, c.parentCollectionID, c.libraryID, c.version, "
+                "COUNT(ci.itemID) AS itemCount FROM collections c "
+                "LEFT JOIN collectionItems ci ON ci.collectionID = c.collectionID "
+                "WHERE c.key = ?"
+            )
             if library_id is not None:
-                sql += " AND libraryID = ?"
+                sql += " AND c.libraryID = ?"
                 params.append(int(library_id))
-            sql += " ORDER BY libraryID, collectionID"
+            sql += " GROUP BY c.collectionID ORDER BY c.libraryID, c.collectionID"
             rows = conn.execute(sql, params).fetchall()
             if not rows:
                 return None
