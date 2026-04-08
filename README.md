@@ -8,69 +8,49 @@
 
 **Let AI manage your Zotero library.**
 
-> [**中文文档**](#中文文档) | **English** | **WeChat Group** 👇
-
-<img src="docs/images/wechat-group.jpg" alt="WeChat Group QR Code" width="250">
+[中文文档](docs/README_zh.md) | English
 
 ---
 
-## For Non-Programmers: You Don't Need to Read This Whole Page
+## For Non-Programmers
 
-This tool is designed to be **used by AI, not memorized by you**. After a simple install (takes ~3 minutes), you just talk to your AI assistant in plain language:
+This tool is designed to be **used by AI, not memorized by you**. After a simple install (~3 minutes), just talk to your AI assistant in plain language:
 
-> "Help me find papers about diabetes and kidney disease in my Zotero library"
+> "Find papers about diabetes and kidney disease in my Zotero library"
 >
 > "Import this DOI into my CKM collection: 10.1038/s41586-024-07871-6"
 >
 > "Export all papers in my thesis collection as BibTeX"
 >
-> "Find PDFs for all items in my review collection that are missing them"
->
-> "Summarize the key findings of this paper: ITEM_KEY"
-
-The AI reads the command reference automatically -- you never need to. Just install it and start asking.
+> "Find PDFs for items in my review collection that are missing them"
 
 **All you need to do:**
-1. Follow the [Installation](#installation) steps below (Python + one Zotero plugin)
+1. Follow the [Installation](#installation) steps below
 2. Tell your AI assistant (Claude Code, Cursor, etc.) what you need
 3. That's it
 
 ---
 
-## 对非程序员朋友的说明
+## What It Does
 
-这个工具**不需要你记住任何命令**，安装完之后直接用中文告诉 AI 你想做什么就行：
+Built on [CLI-Anything](https://github.com/HKUDS/CLI-Anything) by [HKUDS](https://github.com/HKUDS), this tool gives AI agents full access to your local Zotero library through a **JS Bridge** — a lightweight Zotero plugin that exposes a privileged JavaScript endpoint.
 
-> "帮我在 Zotero 里搜一下关于糖尿病和肾病的文献"
->
-> "把这个 DOI 导入到我的 CKM 合集里：10.1038/s41586-024-07871-6"
->
-> "把毕业论文合集里的文献全部导出成 BibTeX"
->
-> "帮我找一下综述合集里缺 PDF 的文献，自动下载"
->
-> "总结一下这篇文章的主要发现"
+**Key capabilities:**
+- **Search & browse** — keyword search, full-text PDF search, collection tree, tags
+- **Import** — from DOI, PMID, RIS/BibTeX files, or JSON
+- **Export** — BibTeX, CSL-JSON, RIS, CSV, formatted citations
+- **PDF management** — attach files, auto-find PDFs online, search annotations
+- **Write operations** — update metadata, manage tags, add notes, trigger sync
+- **Advanced** — execute arbitrary Zotero JS, semantic search with local embeddings, AI analysis
+- **MCP server** — 49 tools for Claude Desktop, Cursor, LM Studio, and other MCP clients
 
-**你只需要：**
-1. 按照下面的[安装步骤](#中文文档)装好（Python + 一个 Zotero 插件，3 分钟）
-2. 打开你的 AI 工具（Claude Code、Cursor 等），用自然语言说你想做什么
-3. 没了
-
----
-
-Built on [CLI-Anything](https://github.com/HKUDS/CLI-Anything) by [HKUDS](https://github.com/HKUDS). Designed for AI agents (Claude Code, Cursor, Codex, etc.) and power users.
-
-## Why This Tool?
-
-Zotero's built-in HTTP server was designed for browser extensions, not for AI agents or CLI workflows. It has no API for attaching PDFs, updating metadata, triggering sync, or running full-text search.
-
-This CLI fills those gaps through a **JS Bridge** -- a lightweight Zotero plugin that exposes a privileged JavaScript endpoint. Zero UI popup, millisecond response.
+All write operations run locally through the JS Bridge — no API key or internet connection required.
 
 ---
 
 ## Installation
 
-**Prerequisites:** Python 3.10+, Zotero 7/8 (running). No other system tools needed.
+**Prerequisites:** Python 3.10+, Zotero 7/8 (running).
 
 ### 1. Install the CLI
 
@@ -93,7 +73,7 @@ cli-anything-zotero app install-plugin
 
 First install requires manual steps in Zotero:
 1. The command generates a `.xpi` file and prints its path
-2. In Zotero: **Tools -> Plugins -> gear icon -> Install Plugin From File...**
+2. In Zotero: **Tools → Plugins → gear icon → Install Plugin From File...**
 3. Select the `.xpi` file, then **restart Zotero**
 
 > After the first install, future upgrades via `app install-plugin` are automatic.
@@ -114,20 +94,18 @@ cli-anything-zotero js "return Zotero.version"
 |---------|----------|
 | `Cannot resolve Zotero profile directory` | Launch Zotero at least once first |
 | Plugin not appearing | Restart Zotero after installing the `.xpi` |
-| `endpoint_active: false` | Plugin failed to load -- reinstall via Zotero UI |
+| `endpoint_active: false` | Plugin failed to load — reinstall via Zotero UI |
 | Windows: `pip` not recognized | Close and reopen PowerShell after installing Python |
 
 ---
 
-## Core Features
-
-Everything below works out of the box after installation. No extra services needed.
+## Usage
 
 **Search & Browse**
 ```bash
-cli-anything-zotero item find "machine learning"      # keyword search
-cli-anything-zotero item search-fulltext "CRISPR"      # search inside PDFs
-cli-anything-zotero collection tree                     # browse collection hierarchy
+cli-anything-zotero item find "machine learning"
+cli-anything-zotero item search-fulltext "CRISPR"
+cli-anything-zotero collection tree
 ```
 
 **Import**
@@ -139,10 +117,10 @@ cli-anything-zotero import file ./refs.ris
 
 **Read & Export**
 ```bash
-cli-anything-zotero item get ITEM_KEY                   # full metadata
+cli-anything-zotero item get ITEM_KEY
 cli-anything-zotero item export ITEM_KEY --format bibtex
-cli-anything-zotero item citation ITEM_KEY               # formatted citation
-cli-anything-zotero item context ITEM_KEY                # LLM-ready context
+cli-anything-zotero item citation ITEM_KEY
+cli-anything-zotero item context ITEM_KEY              # LLM-ready context
 ```
 
 **Write & Manage**
@@ -150,39 +128,34 @@ cli-anything-zotero item context ITEM_KEY                # LLM-ready context
 cli-anything-zotero item update KEY --field title="New Title"
 cli-anything-zotero item tag KEY --add "important"
 cli-anything-zotero item attach KEY ./paper.pdf
-cli-anything-zotero item find-pdf KEY                    # auto-find PDF online
+cli-anything-zotero item find-pdf KEY
 cli-anything-zotero note add KEY --text "My note"
 cli-anything-zotero sync
 ```
 
 **Advanced**
 ```bash
-cli-anything-zotero item search-annotations "risk"       # search all highlights
-cli-anything-zotero item annotations KEY                  # view PDF annotations
-cli-anything-zotero item metrics KEY                      # NIH citation metrics
-cli-anything-zotero collection stats COLLECTION_KEY       # collection statistics
+cli-anything-zotero item search-annotations "risk"
+cli-anything-zotero item annotations KEY
+cli-anything-zotero item metrics KEY                   # NIH citation metrics
+cli-anything-zotero collection stats COLLECTION_KEY
 cli-anything-zotero js "return await Zotero.Items.getAll(1).then(i => i.length)"
 ```
 
+Full command reference: **[docs/COMMANDS.md](docs/COMMANDS.md)**
+
 ---
 
-## MCP Server (NEW in v0.3.0)
+## MCP Server
 
-cli-anything-zotero supports [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) with **49 tools** covering search, browse, import, export, PDF management, annotations, and more.
-
-### Install MCP support
+49 tools for AI clients that support the [Model Context Protocol](https://modelcontextprotocol.io/). Full reference: **[docs/MCP.md](docs/MCP.md)**
 
 ```bash
 pip install 'cli-anything-zotero[mcp]'
-```
-
-### Start MCP server
-
-```bash
 zotero-cli mcp serve
 ```
 
-### Client configuration (Claude Desktop / Cursor / LM Studio)
+Client configuration (Claude Desktop / Cursor / LM Studio):
 
 ```json
 {
@@ -201,16 +174,13 @@ zotero-cli mcp serve
 
 These require extra services. Everything else works without them.
 
-### Semantic Search -- requires an embedding API
+### Semantic Search
 
 Any OpenAI-compatible `/v1/embeddings` endpoint ([Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), OpenAI, etc.).
 
 ```bash
-# 1. Build the vector index (one-time)
-cli-anything-zotero item build-index
-
-# 2. Search
-cli-anything-zotero item semantic-search "cardiovascular risk prediction"
+cli-anything-zotero item build-index                            # one-time
+cli-anything-zotero item semantic-search "cardiovascular risk"
 cli-anything-zotero item similar ITEM_KEY
 ```
 
@@ -220,7 +190,7 @@ cli-anything-zotero item similar ITEM_KEY
 | `ZOTERO_EMBED_MODEL` | `nomic-embed-text` | Model name |
 | `ZOTERO_EMBED_KEY` | *(empty)* | API key (if needed) |
 
-### AI Analysis -- requires OpenAI API key
+### AI Analysis
 
 ```bash
 export OPENAI_API_KEY=sk-...
@@ -229,153 +199,22 @@ cli-anything-zotero item analyze ITEM_KEY --question "What are the main findings
 
 ---
 
-## Full Command Reference
+## Related Projects
 
-40+ commands across 12 groups. See **[docs/COMMANDS.md](docs/COMMANDS.md)** for the complete reference.
+There are several great tools in the Zotero ecosystem. Each has different strengths depending on your use case:
 
----
-
-## Comparison with Other Tools
-
-| Feature | **cli-anything-zotero** | [zotero-cli-cc](https://github.com/Agents365-ai/zotero-cli-cc) | [pyzotero-cli](https://github.com/chriscarrollsmith/pyzotero-cli) | [zotero-mcp](https://github.com/54yyyu/zotero-mcp) |
-|---|:---:|:---:|:---:|:---:|
-| **JS Bridge (privileged ops)** | **Yes** | No | No | No |
-| **Write without API Key** | **Yes** (local) | No (Web API) | No (Web API) | No (Web API) |
-| **Trigger Zotero Sync** | **Yes** | No | No | No |
-| **Execute arbitrary Zotero JS** | **Yes** | No | No | No |
-| **Auto-find PDF online** | **Yes** | No | No | No |
-| **Search PDF annotations** | **Yes** | No | No | No |
-| Direct SQLite Read | Yes | Yes | Partial | No |
-| Full-text Search (inside PDFs) | Yes (JS Bridge) | Yes (SQLite index) | No | Yes |
-| Import by DOI/PMID | Yes | Yes | No | Yes |
-| BibTeX/CSL-JSON Export | Yes | Yes | Yes | No |
-| Semantic Search (embeddings) | Yes | Yes (workspace RAG) | No | Yes |
-| AI Analysis | Yes | Yes | No | No |
-| Terminal CLI | Yes | Yes | Yes | No |
-| MCP Protocol | **Yes (49 tools)** | Yes (45 tools) | No | Yes |
-| JSON Output | Yes | Yes | Yes | N/A |
-| REPL Mode | **Yes** | No | No | No |
-| Session State | **Yes** | No | No | No |
-| Offline Read | Partial | **Yes** | No | No |
-| License | **Apache 2.0** | CC BY-NC 4.0 | MIT | MIT |
-
-### Why cli-anything-zotero?
-
-- **JS Bridge** -- the only tool that can execute privileged Zotero operations locally. Attach PDFs, trigger sync, search annotations, find PDFs online -- all without an API key or internet connection for writes.
-- **Apache 2.0** -- free for commercial use. The main CLI competitor uses CC BY-NC 4.0 which prohibits commercial use.
-- **AI-agent native** -- built on the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) framework, designed from the ground up for AI coding assistants.
+| | **cli-anything-zotero** | [zotero-mcp](https://github.com/54yyyu/zotero-mcp) | [zotero-cli-cc](https://github.com/Agents365-ai/zotero-cli-cc) | [pyzotero-cli](https://github.com/chriscarrollsmith/pyzotero-cli) |
+|---|---|---|---|---|
+| **Approach** | Local JS Bridge | Web API + MCP | Web API + CLI | Web API + CLI |
+| **Best for** | Local-first, full control | MCP-native workflows | Agent-driven research | Scripting & automation |
+| **Write ops** | Local (no API key) | Via Web API | Via Web API | Via Web API |
+| **MCP support** | 49 tools | Yes | 45 tools | No |
+| **Terminal CLI** | Yes | No | Yes | Yes |
+| **Zotero JS access** | Yes | No | No | No |
+| **License** | Apache 2.0 | MIT | CC BY-NC 4.0 | MIT |
 
 ---
 
 ## License
 
-Apache 2.0 -- same as [CLI-Anything](https://github.com/HKUDS/CLI-Anything).
-
----
-
-<a id="中文文档"></a>
-
-# 中文文档
-
-**让 AI 帮你管理 Zotero 文献库。**
-
-基于 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 框架。专为 AI Agent 和高级用户设计。
-
-## 为什么需要这个工具？
-
-Zotero 内置 HTTP 服务只为浏览器扩展设计，无法添加 PDF、更新元数据、触发同步或全文搜索。本工具通过 **JS 桥**填补这些空缺 -- 零弹窗、毫秒级响应。
-
-## 安装
-
-**前提：** Python 3.10+，Zotero 7/8（运行中）。无需其他系统工具。
-
-### 第一步：安装 CLI
-
-```bash
-pip install cli-anything-zotero
-```
-
-### 第二步：安装 JS 桥插件（一次性操作）
-
-```bash
-cli-anything-zotero app install-plugin
-```
-
-首次安装需要在 Zotero 中手动导入：
-1. 上面的命令会生成一个 `.xpi` 文件并显示路径
-2. 在 Zotero 中：**工具 -> 插件 -> 齿轮图标 -> Install Plugin From File...**
-3. 选择 `.xpi` 文件，**重启 Zotero**
-
-> 装好后以后升级都是自动的。
-
-### 第三步：验证
-
-```bash
-cli-anything-zotero app plugin-status --json
-cli-anything-zotero app ping
-```
-
-## 核心功能
-
-安装完成后开箱即用，无需额外服务。
-
-```bash
-# 搜索
-cli-anything-zotero item find "机器学习"
-cli-anything-zotero item search-fulltext "CRISPR"
-cli-anything-zotero collection tree
-
-# 导入
-cli-anything-zotero import doi "10.1038/s41586-024-07871-6" --tag "综述"
-cli-anything-zotero import pmid "37821702"
-
-# 读取与导出
-cli-anything-zotero item get ITEM_KEY
-cli-anything-zotero item export ITEM_KEY --format bibtex
-cli-anything-zotero item context ITEM_KEY            # LLM 友好格式
-
-# 写入与管理
-cli-anything-zotero item update KEY --field title="新标题"
-cli-anything-zotero item attach KEY ./论文.pdf
-cli-anything-zotero note add KEY --text "我的笔记"
-cli-anything-zotero sync
-```
-
-## 可选功能
-
-| 功能 | 需要 | 命令 |
-|------|------|------|
-| 语义搜索 | 嵌入 API（Ollama/LM Studio 等） | `item semantic-search`, `item similar`, `item build-index` |
-| AI 分析 | `OPENAI_API_KEY` | `item analyze` |
-
-## 完整命令参考
-
-40+ 命令，12 个分组。详见 **[docs/COMMANDS.md](docs/COMMANDS.md)**。
-
-## 与其他工具对比
-
-| 特性 | **cli-anything-zotero** | [zotero-cli-cc](https://github.com/Agents365-ai/zotero-cli-cc) | [pyzotero-cli](https://github.com/chriscarrollsmith/pyzotero-cli) | [zotero-mcp](https://github.com/54yyyu/zotero-mcp) |
-|---|:---:|:---:|:---:|:---:|
-| **JS ��（特权操作）** | **有** | 无 | 无 | 无 |
-| **写入无需 API Key** | **有**（本地） | 无（Web API） | 无（Web API） | 无（Web API） |
-| **触发 Zotero 同步** | **有** | 无 | 无 | 无 |
-| **执行任意 Zotero JS** | **有** | 无 | 无 | 无 |
-| **自动在线找 PDF** | **有** | 无 | 无 | 无 |
-| **搜索 PDF 标注** | **有** | 无 | 无 | 无 |
-| SQLite 直接读取 | 有 | 有 | 部分 | 无 |
-| 全文搜索（PDF 内容） | 有（JS 桥） | 有（SQLite 索引） | 无 | 有 |
-| DOI/PMID 导入 | 有 | 有 | 无 | 有 |
-| BibTeX/CSL-JSON 导出 | 有 | 有 | 有 | 无 |
-| 语义搜索（向量） | 有 | 有 | 无 | 有 |
-| 终端 CLI | 有 | 有 | 有 | 无 |
-| 许可证 | **Apache 2.0** | CC BY-NC 4.0 | MIT | MIT |
-
-### 为什么选 cli-anything-zotero？
-
-- **JS 桥** -- 唯一能在本地执行 Zotero 特权操作的工具。附加 PDF、触发同步、搜索标注、在线找 PDF，写入无需 API Key 或联网。
-- **Apache 2.0** -- 可商用。主要竞品使用 CC BY-NC 4.0 禁止商用。
-- **AI Agent 原生** -- 基于 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 框架，为 AI 编程助手设计。
-
-## 许可证
-
-Apache 2.0
+[Apache 2.0](LICENSE)
