@@ -213,4 +213,4 @@ cli-anything-zotero --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-0.2.0
+0.3.3
