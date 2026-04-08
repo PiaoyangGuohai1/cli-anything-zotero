@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports as imports_mod, notes as notes_mod, rendering, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.utils import openai_api, zotero_http, zotero_paths, zotero_sqlite
 
@@ -614,7 +614,7 @@ class WorkflowCoreTests(unittest.TestCase):
 
     def test_note_add_builds_child_note_payload(self):
         js_response = {"ok": True, "data": {"key": "NEWNOTE1", "itemID": 9999, "title": "Sample Title"}}
-        with mock.patch("cli_anything.zotero.core.jsbridge.execute_js", return_value=js_response) as exec_js:
+        with mock.patch.object(jsbridge.JSBridgeClient, "execute_js", return_value=js_response) as exec_js:
             payload = notes_mod.add_note(
                 self.runtime,
                 "REG12345",

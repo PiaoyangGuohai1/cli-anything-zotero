@@ -152,7 +152,8 @@ def add_note(
         f"await note.saveTx(); "
         f"return {{key: note.key, itemID: note.id, title: parent.getField('title').substring(0,60)}};"
     )
-    result = jsbridge.execute_js(js, wait_seconds=5)
+    bridge = jsbridge.JSBridgeClient(port=runtime.environment.port)
+    result = bridge.execute_js(js, wait_seconds=5)
 
     if not result.get("ok"):
         raise RuntimeError(f"Failed to create note via JS bridge: {result.get('error', 'unknown error')}")
