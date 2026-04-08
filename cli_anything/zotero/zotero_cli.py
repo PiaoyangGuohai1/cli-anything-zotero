@@ -1557,6 +1557,28 @@ def repl_command(ctx: click.Context) -> int:
     return run_repl(_current_cli_config(ctx))
 
 
+@cli.group("mcp")
+def mcp_group() -> None:
+    """MCP (Model Context Protocol) server commands."""
+
+
+@mcp_group.command("serve")
+@click.option("--transport", type=click.Choice(["stdio", "sse"]), default="stdio", show_default=True,
+              help="Transport mode. Use 'stdio' for Claude Desktop/Cursor, 'sse' for HTTP clients.")
+@click.pass_context
+def mcp_serve(ctx: click.Context, transport: str) -> None:
+    """Start the MCP server for Claude Desktop, Cursor, or other MCP clients."""
+    from cli_anything.zotero.mcp_server import create_server
+    config = _current_cli_config(ctx)
+    srv = create_server(
+        backend=config.backend,
+        data_dir=config.data_dir,
+        profile_dir=config.profile_dir,
+        executable=config.executable,
+    )
+    srv.run(transport=transport)
+
+
 def dispatch(argv: list[str] | None = None, prog_name: str | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     try:

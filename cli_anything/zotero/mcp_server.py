@@ -1,0 +1,319 @@
+"""MCP (Model Context Protocol) server for cli-anything-zotero.
+
+Wraps existing core functions as MCP tools for use with
+Claude Desktop, Cursor, LM Studio, and other MCP-compatible clients.
+"""
+
+from __future__ import annotations
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    raise ImportError(
+        "MCP server requires the 'mcp' package. "
+        "Install it with: pip install 'cli-anything-zotero[mcp]'"
+    )
+
+from cli_anything.zotero.core import catalog, discovery, jsbridge, notes, rendering, semantic, analysis, metrics
+from cli_anything.zotero.core import session as session_mod
+
+# ---------------------------------------------------------------------------
+# Server instance
+# ---------------------------------------------------------------------------
+
+server = FastMCP(
+    "zotero",
+    instructions=(
+        "MCP server for managing Zotero 7/8 libraries. "
+        "Provides tools for searching, browsing, importing, exporting, "
+        "and managing bibliographic references via local SQLite, "
+        "Connector API, and JS Bridge plugin."
+    ),
+)
+
+# ---------------------------------------------------------------------------
+# Lazy runtime
+# ---------------------------------------------------------------------------
+
+_config: dict = {}
+_runtime_cache: discovery.RuntimeContext | None = None
+
+
+def _get_runtime() -> discovery.RuntimeContext:
+    global _runtime_cache
+    if _runtime_cache is None:
+        _runtime_cache = discovery.build_runtime_context(
+            backend=_config.get("backend", "auto"),
+            data_dir=_config.get("data_dir"),
+            profile_dir=_config.get("profile_dir"),
+            executable=_config.get("executable"),
+        )
+    return _runtime_cache
+
+
+def _session() -> dict:
+    return session_mod.load_session_state()
+
+
+def _unwrap_js(result: dict) -> dict:
+    """Unwrap JS Bridge result envelope, raising on error."""
+    if not result.get("ok"):
+        raise ValueError(result.get("error", "JS Bridge operation failed"))
+    return result.get("data", result)
+
+
+# ===================================================================
+# Tier 1 — Core Read Operations
+# ===================================================================
+
+@server.tool(description="List all libraries (user and group libraries) in Zotero.")
+def list_libraries() -> list[dict]:
+    return catalog.list_libraries(_get_runtime())
+
+
+@server.tool(description="List all collections in the Zotero library.")
+def list_collections() -> list[dict]:
+    return catalog.list_collections(_get_runtime(), session=_session())
+
+
+@server.tool(description="Search for collections by name.")
+def find_collections(query: str, limit: int = 20) -> list[dict]:
+    return catalog.find_collections(_get_runtime(), query, limit=limit, session=_session())
+
+
+@server.tool(description="Get the full collection hierarchy as a tree.")
+def collection_tree() -> list[dict]:
+    return catalog.collection_tree(_get_runtime(), session=_session())
+
+
+@server.tool(description="Get details of a specific collection by key or ID.")
+def get_collection(ref: str) -> dict:
+    return catalog.get_collection(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="List all items in a specific collection.")
+def collection_items(ref: str) -> list[dict]:
+    return catalog.collection_items(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="List items in the library, optionally limited.")
+def list_items(limit: int = 50) -> list[dict]:
+    return catalog.list_items(_get_runtime(), session=_session(), limit=limit)
+
+
+@server.tool(description="Search for items by keyword across title, author, abstract, and tags.")
+def find_items(
+    query: str,
+    collection_ref: str | None = None,
+    limit: int = 20,
+    exact_title: bool = False,
+) -> list[dict]:
+    return catalog.find_items(
+        _get_runtime(), query,
+        collection_ref=collection_ref,
+        limit=limit,
+        exact_title=exact_title,
+        session=_session(),
+    )
+
+
+@server.tool(description="Get full metadata for a specific item by key or ID.")
+def get_item(ref: str) -> dict:
+    return catalog.get_item(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="Get child items (notes, attachments) of an item.")
+def item_children(ref: str) -> list[dict]:
+    return catalog.item_children(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="Get all notes attached to an item.")
+def item_notes(ref: str) -> list[dict]:
+    return catalog.item_notes(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="Get all attachments of an item.")
+def item_attachments(ref: str) -> list[dict]:
+    return catalog.item_attachments(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="Get the main file (PDF) path for an item.")
+def item_file(ref: str) -> dict:
+    return catalog.item_file(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="List all tags in the library.")
+def list_tags() -> list[dict]:
+    return catalog.list_tags(_get_runtime(), session=_session())
+
+
+@server.tool(description="List items that have a specific tag.")
+def tag_items(tag_ref: str) -> list[dict]:
+    return catalog.tag_items(_get_runtime(), tag_ref, session=_session())
+
+
+@server.tool(description="List saved searches in the library.")
+def list_searches() -> list[dict]:
+    return catalog.list_searches(_get_runtime(), session=_session())
+
+
+@server.tool(description="List available citation styles.")
+def list_styles() -> list[dict]:
+    return catalog.list_styles(_get_runtime())
+
+
+# ===================================================================
+# Tier 2 — Export and Rendering
+# ===================================================================
+
+@server.tool(description="Export an item in a specific format (bibtex, csljson, ris, etc.).")
+def export_item(ref: str, fmt: str = "bibtex") -> dict:
+    return rendering.export_item(_get_runtime(), ref, fmt, session=_session())
+
+
+@server.tool(description="Get a formatted citation for an item (e.g. APA, Nature, Vancouver).")
+def citation_item(ref: str, style: str = "apa") -> dict:
+    return rendering.citation_item(_get_runtime(), ref, style=style, session=_session())
+
+
+@server.tool(description="Get a formatted bibliography entry for an item.")
+def bibliography_item(ref: str, style: str = "apa") -> dict:
+    return rendering.bibliography_item(_get_runtime(), ref, style=style, session=_session())
+
+
+@server.tool(description="Get the full content of a specific note by note key.")
+def get_note(ref: str) -> dict:
+    return notes.get_note(_get_runtime(), ref, session=_session())
+
+
+@server.tool(description="Get rich LLM-ready context for an item (metadata + abstract + notes).")
+def item_context(ref: str) -> dict:
+    return analysis.build_item_context(_get_runtime(), ref, session=_session())
+
+
+# ===================================================================
+# Tier 3 — JS Bridge Read Operations (requires Zotero running)
+# ===================================================================
+
+@server.tool(description="Search full-text content inside PDFs in the Zotero library. Requires Zotero running with JS Bridge plugin.")
+def search_fulltext(query: str, limit: int = 10) -> dict:
+    return _unwrap_js(jsbridge.search_fulltext(query, limit=limit))
+
+
+@server.tool(description="Get PDF annotations (highlights, comments) for an item.")
+def get_annotations(item_key: str) -> dict:
+    return _unwrap_js(jsbridge.get_annotations(item_key))
+
+
+@server.tool(description="Search across all PDF annotations by keyword or color.")
+def search_annotations(query: str = "", limit: int = 20) -> dict:
+    return _unwrap_js(jsbridge.search_annotations(query, limit=limit))
+
+
+@server.tool(description="Get statistics for a collection (item count, type breakdown, etc.).")
+def collection_stats(collection_key: str) -> dict:
+    return _unwrap_js(jsbridge.collection_stats(collection_key))
+
+
+@server.tool(description="Find duplicate items in the library.")
+def find_duplicates(limit: int = 50) -> dict:
+    return _unwrap_js(jsbridge.find_duplicates(limit=limit))
+
+
+# ===================================================================
+# Tier 4 — Write Operations
+# ===================================================================
+
+@server.tool(description="Import an item by DOI. Optionally add to a collection and apply tags.")
+def import_from_doi(doi: str, collection_key: str | None = None, tags: list[str] | None = None) -> dict:
+    return _unwrap_js(jsbridge.import_from_doi(doi, collection_key=collection_key, tags=tags))
+
+
+@server.tool(description="Import an item by PubMed ID. Optionally add to a collection and apply tags.")
+def import_from_pmid(pmid: str, collection_key: str | None = None, tags: list[str] | None = None) -> dict:
+    return _unwrap_js(jsbridge.import_from_pmid(pmid, collection_key=collection_key, tags=tags))
+
+
+@server.tool(description="Add or remove tags on an item.")
+def manage_tags(item_key: str, add_tags: list[str] | None = None, remove_tags: list[str] | None = None) -> dict:
+    return _unwrap_js(jsbridge.manage_tags(item_key, add_tags=add_tags or [], remove_tags=remove_tags or []))
+
+
+@server.tool(description="Update metadata fields of an item (e.g. title, date, abstract).")
+def update_item_fields(item_key: str, fields: dict[str, str] = {}) -> dict:
+    return _unwrap_js(jsbridge.update_item_fields(item_key, fields))
+
+
+@server.tool(description="Add a note to an item.")
+def add_note(item_ref: str, text: str, fmt: str = "text") -> dict:
+    return notes.add_note(_get_runtime(), item_ref, text=text, fmt=fmt, session=_session())
+
+
+@server.tool(description="Automatically find and download a PDF for an item from online sources. May take 10-30 seconds.")
+def find_pdf(item_key: str, timeout: int = 30) -> dict:
+    return _unwrap_js(jsbridge.find_pdf(item_key, timeout=timeout))
+
+
+@server.tool(description="Attach a local PDF file to an item.")
+def attach_pdf(item_key: str, pdf_path: str) -> dict:
+    return _unwrap_js(jsbridge.attach_pdf(item_key, pdf_path))
+
+
+@server.tool(description="Add an item to a collection.")
+def add_to_collection(item_key: str, collection_key: str) -> dict:
+    return _unwrap_js(jsbridge.add_to_collection(item_key, collection_key))
+
+
+@server.tool(description="Remove an item from a collection (does not delete the item).")
+def remove_from_collection(item_key: str, collection_key: str) -> dict:
+    return _unwrap_js(jsbridge.remove_from_collection(item_key, collection_key))
+
+
+@server.tool(description="Trigger Zotero sync to push/pull changes with the server.")
+def trigger_sync() -> dict:
+    return _unwrap_js(jsbridge.trigger_sync())
+
+
+# ===================================================================
+# Tier 5 — Advanced
+# ===================================================================
+
+@server.tool(description="Semantic vector search across items. Requires a pre-built embedding index.")
+def semantic_search(query: str, top_k: int = 10, min_score: float = 0.3) -> dict:
+    return semantic.semantic_search(query, top_k=top_k, min_score=min_score)
+
+
+@server.tool(description="Find items similar to a given item using vector embeddings.")
+def find_similar(item_key: str, top_k: int = 5, min_score: float = 0.5) -> dict:
+    return semantic.find_similar(item_key, top_k=top_k, min_score=min_score)
+
+
+@server.tool(description="Get NIH iCite citation metrics for a PubMed ID.")
+def get_citation_metrics(pmid: str) -> dict:
+    return metrics.get_metrics(pmid)
+
+
+@server.tool(description="Execute arbitrary JavaScript code inside Zotero via JS Bridge. Advanced escape hatch.")
+def execute_js(code: str) -> dict:
+    return _unwrap_js(jsbridge.execute_js(code))
+
+
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
+
+def create_server(
+    *,
+    backend: str = "auto",
+    data_dir: str | None = None,
+    profile_dir: str | None = None,
+    executable: str | None = None,
+) -> FastMCP:
+    """Create and return the MCP server, configured with the given options."""
+    _config.update(
+        backend=backend,
+        data_dir=data_dir,
+        profile_dir=profile_dir,
+        executable=executable,
+    )
+    return server

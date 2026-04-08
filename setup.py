@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PACKAGE_NAME = "cli-anything-zotero"
-PACKAGE_VERSION = "0.2.1"
+PACKAGE_VERSION = "0.3.0"
 
 
 def _handle_metadata_query(argv: list[str]) -> bool:
@@ -70,6 +70,9 @@ setup(
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
+        ],
+        "mcp": [
+            "mcp>=1.0.0",
         ],
     },
     entry_points={

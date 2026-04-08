@@ -166,6 +166,37 @@ cli-anything-zotero js "return await Zotero.Items.getAll(1).then(i => i.length)"
 
 ---
 
+## MCP Server (NEW in v0.3.0)
+
+cli-anything-zotero supports [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) with **38 tools** covering search, browse, import, export, PDF management, annotations, and more.
+
+### Install MCP support
+
+```bash
+pip install 'cli-anything-zotero[mcp]'
+```
+
+### Start MCP server
+
+```bash
+zotero-cli mcp serve
+```
+
+### Client configuration (Claude Desktop / Cursor / LM Studio)
+
+```json
+{
+  "mcpServers": {
+    "zotero": {
+      "command": "zotero-cli",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+---
+
 ## Optional Features
 
 These require extra services. Everything else works without them.
@@ -221,7 +252,7 @@ cli-anything-zotero item analyze ITEM_KEY --question "What are the main findings
 | Semantic Search (embeddings) | Yes | Yes (workspace RAG) | No | Yes |
 | AI Analysis | Yes | Yes | No | No |
 | Terminal CLI | Yes | Yes | Yes | No |
-| MCP Protocol | Planned | Yes | No | Yes |
+| MCP Protocol | **Yes (38 tools)** | Yes (45 tools) | No | Yes |
 | JSON Output | Yes | Yes | Yes | N/A |
 | REPL Mode | **Yes** | No | No | No |
 | Session State | **Yes** | No | No | No |
