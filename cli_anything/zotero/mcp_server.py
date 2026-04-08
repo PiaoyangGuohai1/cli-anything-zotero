@@ -239,9 +239,9 @@ def manage_tags(item_key: str, add_tags: list[str] | None = None, remove_tags: l
     return _unwrap_js(jsbridge.manage_tags(item_key, add_tags=add_tags or [], remove_tags=remove_tags or []))
 
 
-@server.tool(description="Update metadata fields of an item (e.g. title, date, abstract).")
-def update_item_fields(item_key: str, fields: dict[str, str] = {}) -> dict:
-    return _unwrap_js(jsbridge.update_item_fields(item_key, fields))
+@server.tool(description="Update metadata fields of an item (e.g. title, date, abstract). Pass fields as {\"title\": \"New Title\", \"date\": \"2024\"}.")
+def update_item_fields(item_key: str, fields: dict[str, str] | None = None) -> dict:
+    return _unwrap_js(jsbridge.update_item_fields(item_key, fields or {}))
 
 
 @server.tool(description="Add a note to an item.")
@@ -303,9 +303,9 @@ def execute_js(code: str) -> dict:
 # ===================================================================
 
 @server.tool(description="Create a new collection. Optionally nest under a parent collection.")
-def create_collection(name: str, parent_key: str | None = None) -> dict:
+def create_collection(name: str, parent_ref: str | None = None) -> dict:
     from cli_anything.zotero.core import experimental
-    return experimental.create_collection(_get_runtime(), name=name, parent_key=parent_key, session=_session())
+    return experimental.create_collection(_get_runtime(), name=name, parent_ref=parent_ref, session=_session())
 
 
 @server.tool(description="Delete a collection. Optionally delete all items inside it.")
