@@ -204,6 +204,38 @@ cli-anything-zotero item analyze ITEM_KEY --question "What are the main findings
 
 ---
 
+## Comparison with Other Tools
+
+| Feature | **cli-anything-zotero** | [zotero-cli-cc](https://github.com/Agents365-ai/zotero-cli-cc) | [pyzotero-cli](https://github.com/chriscarrollsmith/pyzotero-cli) | [zotero-mcp](https://github.com/54yyyu/zotero-mcp) |
+|---|:---:|:---:|:---:|:---:|
+| **JS Bridge (privileged ops)** | **Yes** | No | No | No |
+| **Write without API Key** | **Yes** (local) | No (Web API) | No (Web API) | No (Web API) |
+| **Trigger Zotero Sync** | **Yes** | No | No | No |
+| **Execute arbitrary Zotero JS** | **Yes** | No | No | No |
+| **Auto-find PDF online** | **Yes** | No | No | No |
+| **Search PDF annotations** | **Yes** | No | No | No |
+| Direct SQLite Read | Yes | Yes | Partial | No |
+| Full-text Search (inside PDFs) | Yes (JS Bridge) | Yes (SQLite index) | No | Yes |
+| Import by DOI/PMID | Yes | Yes | No | Yes |
+| BibTeX/CSL-JSON Export | Yes | Yes | Yes | No |
+| Semantic Search (embeddings) | Yes | Yes (workspace RAG) | No | Yes |
+| AI Analysis | Yes | Yes | No | No |
+| Terminal CLI | Yes | Yes | Yes | No |
+| MCP Protocol | Planned | Yes | No | Yes |
+| JSON Output | Yes | Yes | Yes | N/A |
+| REPL Mode | **Yes** | No | No | No |
+| Session State | **Yes** | No | No | No |
+| Offline Read | Partial | **Yes** | No | No |
+| License | **Apache 2.0** | CC BY-NC 4.0 | MIT | MIT |
+
+### Why cli-anything-zotero?
+
+- **JS Bridge** -- the only tool that can execute privileged Zotero operations locally. Attach PDFs, trigger sync, search annotations, find PDFs online -- all without an API key or internet connection for writes.
+- **Apache 2.0** -- free for commercial use. The main CLI competitor uses CC BY-NC 4.0 which prohibits commercial use.
+- **AI-agent native** -- built on the [CLI-Anything](https://github.com/HKUDS/CLI-Anything) framework, designed from the ground up for AI coding assistants.
+
+---
+
 ## License
 
 Apache 2.0 -- same as [CLI-Anything](https://github.com/HKUDS/CLI-Anything).
@@ -288,6 +320,30 @@ cli-anything-zotero sync
 ## 完整命令参考
 
 40+ 命令，12 个分组。详见 **[docs/COMMANDS.md](docs/COMMANDS.md)**。
+
+## 与其他工具对比
+
+| 特性 | **cli-anything-zotero** | [zotero-cli-cc](https://github.com/Agents365-ai/zotero-cli-cc) | [pyzotero-cli](https://github.com/chriscarrollsmith/pyzotero-cli) | [zotero-mcp](https://github.com/54yyyu/zotero-mcp) |
+|---|:---:|:---:|:---:|:---:|
+| **JS ��（特权操作）** | **有** | 无 | 无 | 无 |
+| **写入无需 API Key** | **有**（本地） | 无（Web API） | 无（Web API） | 无（Web API） |
+| **触发 Zotero 同步** | **有** | 无 | 无 | 无 |
+| **执行任意 Zotero JS** | **有** | 无 | 无 | 无 |
+| **自动在线找 PDF** | **有** | 无 | 无 | 无 |
+| **搜索 PDF 标注** | **有** | 无 | 无 | 无 |
+| SQLite 直接读取 | 有 | 有 | 部分 | 无 |
+| 全文搜索（PDF 内容） | 有（JS 桥） | 有（SQLite 索引） | 无 | 有 |
+| DOI/PMID 导入 | 有 | 有 | 无 | 有 |
+| BibTeX/CSL-JSON 导出 | 有 | 有 | 有 | 无 |
+| 语义搜索（向量） | 有 | 有 | 无 | 有 |
+| 终端 CLI | 有 | 有 | 有 | 无 |
+| 许可证 | **Apache 2.0** | CC BY-NC 4.0 | MIT | MIT |
+
+### 为什么选 cli-anything-zotero？
+
+- **JS 桥** -- 唯一能在本地执行 Zotero 特权操作的工具。附加 PDF、触发同步、搜索标注、在线找 PDF，写入无需 API Key 或联网。
+- **Apache 2.0** -- 可商用。主要竞品使用 CC BY-NC 4.0 禁止商用。
+- **AI Agent 原生** -- 基于 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 框架，为 AI 编程助手设计。
 
 ## 许可证
 
