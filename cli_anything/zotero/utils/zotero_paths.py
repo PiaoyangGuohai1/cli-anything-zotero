@@ -208,7 +208,11 @@ def find_install_dir(executable: Optional[Path]) -> Optional[Path]:
 def get_version(install_dir: Optional[Path]) -> str:
     if install_dir is None:
         return "unknown"
-    candidates = [install_dir / "app" / "application.ini", install_dir / "application.ini"]
+    candidates = [
+        install_dir / "app" / "application.ini",
+        install_dir / "application.ini",
+        install_dir.parent / "Resources" / "app" / "application.ini",  # macOS Zotero.app bundle
+    ]
     for candidate in candidates:
         if not candidate.exists():
             continue

@@ -995,16 +995,22 @@ def item_metrics_command(ctx: click.Context, ref: str, is_pmid: bool) -> int:
             item_data = catalog.get_item(current_runtime(ctx), ref, session=current_session())
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
-        extra = item_data.get("fields", {}).get("extra") or ""
+        fields = item_data.get("fields", {})
         pmid = None
-        for line in extra.splitlines():
-            stripped = line.strip()
-            if stripped.upper().startswith("PMID:"):
-                pmid = stripped.split(":", 1)[1].strip()
-                break
+        # Check direct PMID field first (Zotero 7+ stores PMID as a dedicated field)
+        if fields.get("PMID"):
+            pmid = str(fields["PMID"]).strip()
+        else:
+            # Fallback: parse PMID from the extra field text
+            extra = fields.get("extra") or ""
+            for line in extra.splitlines():
+                stripped = line.strip()
+                if stripped.upper().startswith("PMID:"):
+                    pmid = stripped.split(":", 1)[1].strip()
+                    break
         if not pmid:
             raise click.ClickException(
-                f"No PMID found in item '{ref}' extra field. "
+                f"No PMID found in item '{ref}' (checked PMID field and extra text). "
                 "Use --pmid flag to pass a PMID directly."
             )
     result = metrics.get_metrics(pmid)
@@ -1581,13 +1587,23 @@ def mcp_serve(ctx: click.Context, transport: str) -> None:
 
 def dispatch(argv: list[str] | None = None, prog_name: str | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    json_mode = "--json" in args
     try:
         result = cli.main(args=args, prog_name=prog_name or "cli-anything-zotero", standalone_mode=False)
     except click.exceptions.Exit as exc:
         return int(exc.exit_code)
     except click.ClickException as exc:
-        exc.show()
+        if json_mode:
+            click.echo(_json_text({"error": exc.format_message()}))
+        else:
+            exc.show()
         return int(exc.exit_code)
+    except RuntimeError as exc:
+        if json_mode:
+            click.echo(_json_text({"error": str(exc)}))
+        else:
+            click.echo(f"Error: {exc}", err=True)
+        return 1
     return int(result or 0)
 
 

@@ -561,11 +561,12 @@ def search_annotations(query: str = "", *, colors: list[str] | None = None, limi
 def remove_from_collection(item_key: str, collection_key: str, *, library_id: int = 1) -> dict:
     """Remove an item from a collection (does NOT delete the item)."""
     js = (
-        f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
-        f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
         f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
         f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
-        f"await col.removeItem(item.id); "
+        f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
+        f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
+        f"item.removeFromCollection(col.id); "
+        f"await item.saveTx(); "
         f"return 'OK: removed ' + item.getField('title').substring(0,50) + ' from ' + col.name;"
     )
     return execute_js(js, wait_seconds=4)

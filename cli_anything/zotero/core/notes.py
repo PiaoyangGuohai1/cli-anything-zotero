@@ -158,6 +158,8 @@ def add_note(
         raise RuntimeError(f"Failed to create note via JS bridge: {result.get('error', 'unknown error')}")
 
     data = result.get("data", {})
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Unexpected JS Bridge response (expected dict, got {type(data).__name__}): {data}")
     return {
         "action": "note_add",
         "key": data.get("key"),
