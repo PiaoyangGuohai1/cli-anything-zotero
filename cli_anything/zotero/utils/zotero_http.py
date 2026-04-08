@@ -101,9 +101,19 @@ def get_selected_collection(port: int, timeout: int = 5) -> dict[str, Any]:
     return response.json()
 
 
-def connector_import_text(port: int, content: str, *, session_id: str | None = None, timeout: int = 20) -> list[dict[str, Any]]:
+def connector_import_text(
+    port: int,
+    content: str,
+    *,
+    session_id: str | None = None,
+    content_type: str = "text/plain",
+    timeout: int = 20,
+) -> list[dict[str, Any]]:
     params = {"session": session_id} if session_id else None
-    response = request(port, "/connector/import", method="POST", params=params, data=content, timeout=timeout)
+    response = request(
+        port, "/connector/import", method="POST", params=params, data=content,
+        headers={"Content-Type": content_type}, timeout=timeout,
+    )
     if response.status != 201:
         raise RuntimeError(f"connector/import returned HTTP {response.status}: {response.body}")
     parsed = response.json()

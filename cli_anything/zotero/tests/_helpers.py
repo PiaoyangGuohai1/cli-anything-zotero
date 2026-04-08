@@ -671,6 +671,20 @@ def fake_zotero_http_server(
                 self._json_response(201, attachment)
                 return
 
+            if self.path.startswith("/cli-bridge/eval"):
+                # Fake JS Bridge: parse the JS code and return a mock response
+                js_code = decoded_body
+                # For note creation, return a fake success response
+                if "saveTx" in js_code and "setNote" in js_code:
+                    self._json_response(200, {"key": "MOCKNOTE", "itemID": 99999})
+                elif "removeFromCollection" in js_code:
+                    self._json_response(200, "OK: removed item from collection")
+                elif "addToCollection" in js_code:
+                    self._json_response(200, "OK: added item to collection")
+                else:
+                    self._json_response(200, "mock-bridge-ok")
+                return
+
             if self.path.startswith("/v1/responses"):
                 self._json_response(
                     200,

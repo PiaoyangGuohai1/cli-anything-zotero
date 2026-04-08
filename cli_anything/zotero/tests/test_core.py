@@ -14,7 +14,7 @@ from cli_anything.zotero.utils import openai_api, zotero_http, zotero_paths, zot
 class PathDiscoveryTests(unittest.TestCase):
     def test_build_environment_uses_active_profile_and_data_dir_pref(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            env = create_sample_environment(Path(tmpdir))
+            env = create_sample_environment(Path(tmpdir).resolve())
             runtime_env = zotero_paths.build_environment(
                 explicit_profile_dir=str(env["profile_root"]),
                 explicit_executable=str(env["executable"]),
@@ -613,21 +613,21 @@ class WorkflowCoreTests(unittest.TestCase):
         self.assertEqual(note["noteText"], "Example note")
 
     def test_note_add_builds_child_note_payload(self):
-        with mock.patch.object(self.runtime, "connector_available", True):
-            with mock.patch("cli_anything.zotero.utils.zotero_http.get_selected_collection", return_value={"libraryID": 1}):
-                with mock.patch("cli_anything.zotero.utils.zotero_http.connector_save_items") as save_items:
-                    payload = notes_mod.add_note(
-                        self.runtime,
-                        "REG12345",
-                        text="# Heading\n\nA **bold** note",
-                        fmt="markdown",
-                    )
-        save_items.assert_called_once()
-        submitted = save_items.call_args.args[1][0]
-        self.assertEqual(submitted["itemType"], "note")
-        self.assertEqual(submitted["parentItem"], "REG12345")
-        self.assertIn("<h1>", submitted["note"])
+        js_response = {"ok": True, "data": {"key": "NEWNOTE1", "itemID": 9999, "title": "Sample Title"}}
+        with mock.patch("cli_anything.zotero.core.jsbridge.execute_js", return_value=js_response) as exec_js:
+            payload = notes_mod.add_note(
+                self.runtime,
+                "REG12345",
+                text="# Heading\n\nA **bold** note",
+                fmt="markdown",
+            )
+        exec_js.assert_called_once()
+        js_code = exec_js.call_args.args[0]
+        self.assertIn("setNote(", js_code)
+        self.assertIn("<h1>", js_code)
         self.assertEqual(payload["parentItemKey"], "REG12345")
+        self.assertEqual(payload["key"], "NEWNOTE1")
+        self.assertEqual(payload["action"], "note_add")
 
     def test_item_context_aggregates_exports_and_links(self):
         with mock.patch.object(self.runtime, "local_api_available", True):

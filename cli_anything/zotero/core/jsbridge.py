@@ -24,7 +24,9 @@ import urllib.error
 import urllib.request
 import warnings
 
-_BRIDGE_URL = "http://localhost:23119/cli-bridge/eval"
+def _bridge_url() -> str:
+    port = os.environ.get("ZOTERO_HTTP_PORT", "23119").strip()
+    return f"http://localhost:{port}/cli-bridge/eval"
 _RESULT_FILE = os.path.join(tempfile.gettempdir(), "zotero-cli-result.json")
 
 _LOCALE = os.environ.get("ZOTERO_LOCALE", "en")
@@ -62,7 +64,7 @@ def bridge_endpoint_active() -> bool:
     """Check if the CLI bridge HTTP endpoint is registered and responding."""
     try:
         req = urllib.request.Request(
-            _BRIDGE_URL,
+            _bridge_url(),
             data=b"return 'ping';",
             headers={"Content-Type": "text/plain"},
             method="POST",
@@ -77,7 +79,7 @@ def _execute_http(code: str, *, timeout: int = 30) -> dict:
     """Execute JS via the HTTP bridge. Returns {"ok": bool, "data": ..., "error": ...}."""
     try:
         req = urllib.request.Request(
-            _BRIDGE_URL,
+            _bridge_url(),
             data=code.encode("utf-8"),
             headers={"Content-Type": "text/plain"},
             method="POST",
@@ -399,7 +401,7 @@ def import_from_pmid(pmid: str, *, collection_key: str | None = None, tags: list
         f"{post_import_js} "
         f"return 'OK: imported ' + item.getField('title').substring(0,60) + ' (key: ' + item.key + ')';"
     )
-    return execute_js(js, wait_seconds=15)
+    return execute_js(js, wait_seconds=30)
 
 
 def search_fulltext(query: str, *, limit: int = 10, library_id: int = 1) -> dict:
@@ -568,6 +570,26 @@ def remove_from_collection(item_key: str, collection_key: str, *, library_id: in
         f"item.removeFromCollection(col.id); "
         f"await item.saveTx(); "
         f"return 'OK: removed ' + item.getField('title').substring(0,50) + ' from ' + col.name;"
+    )
+    return execute_js(js, wait_seconds=4)
+
+
+def create_collection(name: str, *, parent_key: str | None = None, library_id: int = 1) -> dict:
+    """Create a new collection via JS Bridge (works while Zotero is running)."""
+    safe_name = name.replace("'", "\\'")
+    parent_js = ""
+    if parent_key:
+        parent_js = (
+            f"var parent = Zotero.Collections.getByLibraryAndKey({library_id}, '{parent_key}'); "
+            f"if (parent) {{ col.parentID = parent.id; }} "
+        )
+    js = (
+        f"var col = new Zotero.Collection(); "
+        f"col.name = '{safe_name}'; "
+        f"col.libraryID = {library_id}; "
+        f"{parent_js}"
+        f"await col.saveTx(); "
+        f"return {{key: col.key, id: col.id, name: col.name, libraryID: {library_id}}};"
     )
     return execute_js(js, wait_seconds=4)
 

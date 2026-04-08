@@ -578,7 +578,16 @@ def import_file(
         else []
     )
     session_id = _session_id("import-file")
-    imported = zotero_http.connector_import_text(runtime.environment.port, content, session_id=session_id)
+    # Detect content type from file extension for connector/import
+    _content_types = {
+        ".bib": "text/x-bibtex", ".bibtex": "text/x-bibtex",
+        ".ris": "application/x-research-info-systems",
+        ".enw": "application/x-endnote-refer", ".refer": "application/x-endnote-refer",
+        ".xml": "text/xml", ".mods": "text/xml",
+        ".csv": "text/csv",
+    }
+    ct = _content_types.get(source_path.suffix.lower(), "text/plain")
+    imported = zotero_http.connector_import_text(runtime.environment.port, content, session_id=session_id, content_type=ct)
     target = _resolve_target(runtime, collection_ref, session=session)
     normalized_tags = _normalize_tags(list(tags))
     zotero_http.connector_update_session(

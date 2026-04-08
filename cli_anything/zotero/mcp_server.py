@@ -309,9 +309,8 @@ def execute_js(code: str) -> dict:
 # ===================================================================
 
 @server.tool(description="Create a new collection. Optionally nest under a parent collection.")
-def create_collection(name: str, parent_ref: str | None = None) -> dict:
-    from cli_anything.zotero.core import experimental
-    return experimental.create_collection(_get_runtime(), name=name, parent_ref=parent_ref, session=_session())
+def create_collection(name: str, parent_key: str | None = None) -> dict:
+    return _unwrap_js(jsbridge.create_collection(name, parent_key=parent_key, library_id=_library_id()))
 
 
 @server.tool(description="Delete a collection. Optionally delete all items inside it.")

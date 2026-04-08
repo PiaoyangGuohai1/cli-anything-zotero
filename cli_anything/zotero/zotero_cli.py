@@ -23,12 +23,20 @@ CONTEXT_SETTINGS = {"ignore_unknown_options": False}
 
 
 def _propagate_json_flag(ctx: click.Context, args: list[str]) -> list[str]:
-    """Extract ``--json`` from *args* and bubble it up to the root context."""
+    """Extract ``--json`` from *args* and bubble it up to the root context.
+
+    At the root level, leave ``--json`` in args so Click can process it
+    normally through its own option.  At sub-levels (groups/commands),
+    remove it from args and propagate to the root context.
+    """
     if "--json" not in args:
+        return args
+    root = ctx.find_root()
+    if ctx is root:
+        # Root level: let Click handle --json via its own @click.option
         return args
     args = list(args)
     args.remove("--json")
-    root = ctx.find_root()
     root.ensure_object(dict)
     root.obj["json_output"] = True
     cli_config = root.obj.get("cli_config")
@@ -558,28 +566,36 @@ def collection_use_selected(ctx: click.Context) -> int:
 
 @collection.command("create")
 @click.argument("name")
-@click.option("--parent", "parent_ref", default=None, help="Parent collection ID or key.")
-@click.option("--library", "library_ref", default=None, help="Library ID or treeView ID (user library only).")
-@click.option("--experimental", "experimental_mode", is_flag=True, help="Acknowledge experimental direct SQLite write mode.")
+@click.option("--parent", "parent_ref", default=None, help="Parent collection key.")
+@click.option("--experimental", "experimental_mode", is_flag=True, help="Force experimental direct SQLite write mode (requires Zotero closed).")
 @click.pass_context
 def collection_create_command(
     ctx: click.Context,
     name: str,
     parent_ref: str | None,
-    library_ref: str | None,
     experimental_mode: bool,
 ) -> int:
-    _require_experimental_flag(experimental_mode, "collection create")
-    emit(
-        ctx,
-        experimental.create_collection(
-            current_runtime(ctx),
-            name,
-            parent_ref=parent_ref,
-            library_ref=library_ref,
-            session=current_session(),
-        ),
-    )
+    runtime = current_runtime(ctx)
+    if experimental_mode:
+        emit(
+            ctx,
+            experimental.create_collection(
+                runtime, name, parent_ref=parent_ref, session=current_session(),
+            ),
+        )
+    else:
+        # Prefer JS Bridge (works while Zotero is running)
+        result = jsbridge.create_collection(
+            name, parent_key=parent_ref, library_id=int(current_session().get("current_library", 1)),
+        )
+        if not result.get("ok", True):
+            raise RuntimeError(result.get("error", "Failed to create collection"))
+        data = result.get("data", result)
+        if isinstance(data, dict):
+            data["action"] = "collection_create"
+            emit(ctx, data)
+        else:
+            emit(ctx, result, message=f"OK: created collection {name}")
     return 0
 
 
