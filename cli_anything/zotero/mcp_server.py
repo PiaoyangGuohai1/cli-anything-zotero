@@ -51,6 +51,16 @@ def _get_runtime() -> discovery.RuntimeContext:
     return _runtime_cache
 
 
+_bridge_cache: jsbridge.JSBridgeClient | None = None
+
+
+def _get_bridge() -> jsbridge.JSBridgeClient:
+    global _bridge_cache
+    if _bridge_cache is None:
+        _bridge_cache = jsbridge.JSBridgeClient(port=_get_runtime().environment.port)
+    return _bridge_cache
+
+
 def _library_id() -> int:
     """Resolve library ID from session state, defaulting to 1 (user library)."""
     session = _session()
@@ -203,27 +213,27 @@ def item_context(ref: str, include_notes: bool = True) -> dict:
 
 @server.tool(description="Search full-text content inside PDFs in the Zotero library. Requires Zotero running with JS Bridge plugin.")
 def search_fulltext(query: str, limit: int = 10) -> dict:
-    return _unwrap_js(jsbridge.search_fulltext(query, limit=limit, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().search_fulltext(query, limit=limit, library_id=_library_id()))
 
 
 @server.tool(description="Get PDF annotations (highlights, comments) for an item.")
 def get_annotations(item_key: str) -> dict:
-    return _unwrap_js(jsbridge.get_annotations(item_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().get_annotations(item_key, library_id=_library_id()))
 
 
 @server.tool(description="Search across all PDF annotations by keyword or color.")
 def search_annotations(query: str = "", limit: int = 20) -> dict:
-    return _unwrap_js(jsbridge.search_annotations(query, limit=limit, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().search_annotations(query, limit=limit, library_id=_library_id()))
 
 
 @server.tool(description="Get statistics for a collection (item count, type breakdown, etc.).")
 def collection_stats(collection_key: str) -> dict:
-    return _unwrap_js(jsbridge.collection_stats(collection_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().collection_stats(collection_key, library_id=_library_id()))
 
 
 @server.tool(description="Find duplicate items in the library.")
 def find_duplicates(limit: int = 50) -> dict:
-    return _unwrap_js(jsbridge.find_duplicates(limit=limit, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().find_duplicates(limit=limit, library_id=_library_id()))
 
 
 # ===================================================================
@@ -242,12 +252,12 @@ def import_from_pmid(pmid: str, collection_key: str | None = None, tags: list[st
 
 @server.tool(description="Add or remove tags on an item.")
 def manage_tags(item_key: str, add_tags: list[str] | None = None, remove_tags: list[str] | None = None) -> dict:
-    return _unwrap_js(jsbridge.manage_tags(item_key, add_tags=add_tags or [], remove_tags=remove_tags or [], library_id=_library_id()))
+    return _unwrap_js(_get_bridge().manage_tags(item_key, add_tags=add_tags or [], remove_tags=remove_tags or [], library_id=_library_id()))
 
 
 @server.tool(description="Update metadata fields of an item (e.g. title, date, abstract). Pass fields as {\"title\": \"New Title\", \"date\": \"2024\"}.")
 def update_item_fields(item_key: str, fields: dict[str, str] | None = None) -> dict:
-    return _unwrap_js(jsbridge.update_item_fields(item_key, fields or {}, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().update_item_fields(item_key, fields or {}, library_id=_library_id()))
 
 
 @server.tool(description="Add a note to an item.")
@@ -257,27 +267,27 @@ def add_note(item_ref: str, text: str, fmt: str = "text") -> dict:
 
 @server.tool(description="Automatically find and download a PDF for an item from online sources. May take 10-30 seconds.")
 def find_pdf(item_key: str, timeout: int = 30) -> dict:
-    return _unwrap_js(jsbridge.find_pdf(item_key, timeout=timeout, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().find_pdf(item_key, timeout=timeout, library_id=_library_id()))
 
 
 @server.tool(description="Attach a local PDF file to an item.")
 def attach_pdf(item_key: str, pdf_path: str) -> dict:
-    return _unwrap_js(jsbridge.attach_pdf(item_key, pdf_path, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().attach_pdf(item_key, pdf_path, library_id=_library_id()))
 
 
 @server.tool(description="Add an item to a collection.")
 def add_to_collection(item_key: str, collection_key: str) -> dict:
-    return _unwrap_js(jsbridge.add_to_collection(item_key, collection_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().add_to_collection(item_key, collection_key, library_id=_library_id()))
 
 
 @server.tool(description="Remove an item from a collection (does not delete the item).")
 def remove_from_collection(item_key: str, collection_key: str) -> dict:
-    return _unwrap_js(jsbridge.remove_from_collection(item_key, collection_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().remove_from_collection(item_key, collection_key, library_id=_library_id()))
 
 
 @server.tool(description="Trigger Zotero sync to push/pull changes with the server.")
 def trigger_sync() -> dict:
-    return _unwrap_js(jsbridge.trigger_sync())
+    return _unwrap_js(_get_bridge().trigger_sync())
 
 
 # ===================================================================
@@ -301,7 +311,7 @@ def get_citation_metrics(pmid: str) -> dict:
 
 @server.tool(description="Execute arbitrary JavaScript code inside Zotero via JS Bridge. Advanced escape hatch — you can run any Zotero API call.")
 def execute_js(code: str) -> dict:
-    return _unwrap_js(jsbridge.execute_js(code))
+    return _unwrap_js(_get_bridge().execute_js(code))
 
 
 # ===================================================================
@@ -310,27 +320,27 @@ def execute_js(code: str) -> dict:
 
 @server.tool(description="Create a new collection. Optionally nest under a parent collection.")
 def create_collection(name: str, parent_key: str | None = None) -> dict:
-    return _unwrap_js(jsbridge.create_collection(name, parent_key=parent_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().create_collection(name, parent_key=parent_key, library_id=_library_id()))
 
 
 @server.tool(description="Delete a collection. Optionally delete all items inside it.")
 def delete_collection(collection_key: str, delete_items: bool = False) -> dict:
-    return _unwrap_js(jsbridge.delete_collection(collection_key, delete_items=delete_items, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().delete_collection(collection_key, delete_items=delete_items, library_id=_library_id()))
 
 
 @server.tool(description="Rename a collection or move it under a different parent.")
 def update_collection(collection_key: str, name: str | None = None, parent_key: str | None = None) -> dict:
-    return _unwrap_js(jsbridge.update_collection(collection_key, name=name, parent_key=parent_key))
+    return _unwrap_js(_get_bridge().update_collection(collection_key, name=name, parent_key=parent_key))
 
 
 @server.tool(description="Delete an item (move to trash). This is destructive.")
 def delete_item(item_key: str) -> dict:
-    return _unwrap_js(jsbridge.delete_item(item_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().delete_item(item_key, library_id=_library_id()))
 
 
 @server.tool(description="Find PDFs for all items in a collection that are missing them. May take a while.")
 def find_pdfs_in_collection(collection_key: str) -> dict:
-    return _unwrap_js(jsbridge.find_pdfs_in_collection(collection_key, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().find_pdfs_in_collection(collection_key, library_id=_library_id()))
 
 
 @server.tool(description="Build the semantic vector index for all items. Required before semantic_search/find_similar. May take several minutes for large libraries.")
@@ -374,6 +384,7 @@ def create_server(
     """Create and return the MCP server, configured with the given options."""
     global _runtime_cache
     _runtime_cache = None  # Clear cached runtime so new config takes effect
+    _bridge_cache = None  # Clear cached bridge client
     _config.update(
         backend=backend,
         data_dir=data_dir,

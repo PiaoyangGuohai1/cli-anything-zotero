@@ -182,6 +182,18 @@ def current_runtime(ctx: click.Context) -> discovery.RuntimeContext:
     return cached
 
 
+def current_bridge(ctx: click.Context) -> jsbridge.JSBridgeClient:
+    """Get a JS Bridge client bound to the runtime's discovered port."""
+    root = ctx.find_root()
+    root.ensure_object(dict)
+    cached = root.obj.get("bridge")
+    if cached is None:
+        runtime = current_runtime(ctx)
+        cached = jsbridge.JSBridgeClient(port=runtime.environment.port)
+        root.obj["bridge"] = cached
+    return cached
+
+
 def current_session() -> dict[str, Any]:
     return session_mod.load_session_state()
 
@@ -356,7 +368,7 @@ def app_install_plugin(ctx: click.Context) -> int:
     xpi_path = zotero_paths.install_plugin_xpi(profile_dir)
 
     # Try programmatic install via JS bridge (works when bridge is already active)
-    if jsbridge.bridge_endpoint_active():
+    if current_bridge(ctx).bridge_endpoint_active():
         js = (
             "var {AddonManager} = ChromeUtils.importESModule("
             "'resource://gre/modules/AddonManager.sys.mjs'); "
@@ -365,7 +377,7 @@ def app_install_plugin(ctx: click.Context) -> int:
             "await install.install(); "
             "return 'OK: ' + install.addon.id;"
         )
-        result = jsbridge.execute_js(js, wait_seconds=10)
+        result = current_bridge(ctx).execute_js(js, wait_seconds=10)
         if result.get("ok") and result.get("data", "").startswith("OK"):
             emit(ctx, {
                 "action": "install_plugin",
@@ -396,7 +408,7 @@ def app_plugin_status(ctx: click.Context) -> int:
     runtime = current_runtime(ctx)
     profile_dir = runtime.environment.profile_dir
     installed = zotero_paths.plugin_installed(profile_dir)
-    active = jsbridge.bridge_endpoint_active()
+    active = current_bridge(ctx).bridge_endpoint_active()
     emit(ctx, {
         "plugin_installed": installed,
         "endpoint_active": active,
@@ -585,7 +597,7 @@ def collection_create_command(
         )
     else:
         # Prefer JS Bridge (works while Zotero is running)
-        result = jsbridge.create_collection(
+        result = current_bridge(ctx).create_collection(
             name, parent_key=parent_ref, library_id=int(current_session().get("current_library", 1)),
         )
         if not result.get("ok", True):
@@ -604,7 +616,7 @@ def collection_create_command(
 @click.pass_context
 def collection_find_pdfs_command(ctx: click.Context, collection_key: str) -> int:
     """Find available PDFs for all items missing PDFs in a collection (via JS bridge)."""
-    result = jsbridge.find_pdfs_in_collection(collection_key)
+    result = current_bridge(ctx).find_pdfs_in_collection(collection_key)
     return emit_js(ctx, result)
 
 
@@ -613,7 +625,7 @@ def collection_find_pdfs_command(ctx: click.Context, collection_key: str) -> int
 @click.pass_context
 def collection_stats_command(ctx: click.Context, collection_key: str) -> int:
     """Get statistics for a Zotero collection (via JS bridge)."""
-    result = jsbridge.collection_stats(collection_key)
+    result = current_bridge(ctx).collection_stats(collection_key)
     return emit_js(ctx, result)
 
 
@@ -623,7 +635,7 @@ def collection_stats_command(ctx: click.Context, collection_key: str) -> int:
 @click.pass_context
 def collection_remove_item_command(ctx: click.Context, collection_key: str, item_key: str) -> int:
     """Remove an item from a collection (item is NOT deleted)."""
-    result = jsbridge.remove_from_collection(item_key, collection_key)
+    result = current_bridge(ctx).remove_from_collection(item_key, collection_key)
     return emit_js(ctx, result)
 
 
@@ -634,7 +646,7 @@ def collection_remove_item_command(ctx: click.Context, collection_key: str, item
 @click.pass_context
 def collection_delete_command(ctx: click.Context, collection_key: str, delete_items: bool, confirm: bool) -> int:
     """Delete a collection (via JS bridge). Requires --confirm."""
-    result = jsbridge.delete_collection(collection_key, delete_items=delete_items)
+    result = current_bridge(ctx).delete_collection(collection_key, delete_items=delete_items)
     return emit_js(ctx, result)
 
 
@@ -645,24 +657,25 @@ def collection_delete_command(ctx: click.Context, collection_key: str, delete_it
 @click.pass_context
 def collection_rename_command(ctx: click.Context, collection_key: str, name: str | None, parent_key: str | None) -> int:
     """Rename or move a collection (via JS bridge)."""
-    result = jsbridge.update_collection(collection_key, name=name, parent_key=parent_key)
+    result = current_bridge(ctx).update_collection(collection_key, name=name, parent_key=parent_key)
     return emit_js(ctx, result)
 
 
 @cli.command("js")
 @click.argument("code")
 @click.option("--wait", default=3, help="Seconds to wait for execution.")
-def js_command(code: str, wait: int) -> int:
+@click.pass_context
+def js_command(ctx: click.Context, code: str, wait: int) -> int:
     """Execute arbitrary JavaScript in Zotero's JS console (via JS bridge)."""
-    result = jsbridge.execute_js(code, wait_seconds=wait)
-    return emit_js(None, result)
+    result = current_bridge(ctx).execute_js(code, wait_seconds=wait)
+    return emit_js(ctx, result)
 
 
 @cli.command("sync")
 @click.pass_context
 def sync_command(ctx: click.Context) -> int:
     """Trigger a Zotero sync operation (via JS bridge)."""
-    result = jsbridge.trigger_sync()
+    result = current_bridge(ctx).trigger_sync()
     return emit_js(ctx, result)
 
 
@@ -752,7 +765,7 @@ def item_file_command(ctx: click.Context, ref: str | None) -> int:
 @click.pass_context
 def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int:
     """Attach a local PDF file to an existing Zotero item (via JS bridge)."""
-    result = jsbridge.attach_pdf(item_key, pdf_path)
+    result = current_bridge(ctx).attach_pdf(item_key, pdf_path)
     return emit_js(ctx, result)
 
 
@@ -762,7 +775,7 @@ def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int
 @click.pass_context
 def item_find_pdf_command(ctx: click.Context, item_key: str, timeout: int) -> int:
     """Trigger Zotero's 'Find Available PDF' for a single item (via JS bridge)."""
-    result = jsbridge.find_pdf(item_key, timeout=timeout)
+    result = current_bridge(ctx).find_pdf(item_key, timeout=timeout)
     return emit_js(ctx, result)
 
 
@@ -773,7 +786,7 @@ def item_find_pdf_command(ctx: click.Context, item_key: str, timeout: int) -> in
 @click.pass_context
 def item_search_annotations_command(ctx: click.Context, query: str, colors: tuple, limit: int) -> int:
     """Search annotations across all items by keyword and/or color."""
-    result = jsbridge.search_annotations(query, colors=list(colors) if colors else None, limit=limit)
+    result = current_bridge(ctx).search_annotations(query, colors=list(colors) if colors else None, limit=limit)
     return emit_js(ctx, result)
 
 
@@ -823,7 +836,7 @@ def item_update_command(ctx: click.Context, item_key: str, fields: tuple[str, ..
         fields_dict[k.strip()] = v.strip()
     if not fields_dict:
         raise click.ClickException("At least one --field key=value is required.")
-    result = jsbridge.update_item_fields(item_key, fields_dict)
+    result = current_bridge(ctx).update_item_fields(item_key, fields_dict)
     return emit_js(ctx, result)
 
 
@@ -836,7 +849,7 @@ def item_tag_command(ctx: click.Context, item_key: str, add_tags: tuple[str, ...
     """Add or remove tags on an existing Zotero item (via JS bridge)."""
     if not add_tags and not remove_tags:
         raise click.ClickException("At least one --add or --remove tag is required.")
-    result = jsbridge.manage_tags(item_key, list(add_tags), list(remove_tags))
+    result = current_bridge(ctx).manage_tags(item_key, list(add_tags), list(remove_tags))
     return emit_js(ctx, result)
 
 
@@ -943,7 +956,7 @@ def item_add_to_collection_command(ctx: click.Context, item_ref: str, collection
     if experimental_mode:
         emit(ctx, experimental.add_item_to_collection(runtime, item_ref, collection_ref, session=current_session()))
     else:
-        result = jsbridge.add_to_collection(item_ref, collection_ref)
+        result = current_bridge(ctx).add_to_collection(item_ref, collection_ref)
         emit_js(ctx, result)
     return 0
 
@@ -984,7 +997,7 @@ def item_move_to_collection_command(
 @click.pass_context
 def item_search_fulltext_command(ctx: click.Context, query: str, limit: int) -> int:
     """Search full-text content of PDFs in the Zotero library (via JS bridge)."""
-    result = jsbridge.search_fulltext(query, limit=limit)
+    result = current_bridge(ctx).search_fulltext(query, limit=limit)
     return emit_js(ctx, result)
 
 
@@ -993,7 +1006,7 @@ def item_search_fulltext_command(ctx: click.Context, query: str, limit: int) -> 
 @click.pass_context
 def item_annotations_command(ctx: click.Context, item_key: str) -> int:
     """View annotations and highlights for a Zotero item (via JS bridge)."""
-    result = jsbridge.get_annotations(item_key)
+    result = current_bridge(ctx).get_annotations(item_key)
     return emit_js(ctx, result)
 
 
@@ -1045,7 +1058,7 @@ def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int
             f"Deleting item '{item_key}' is irreversible. "
             "Pass --confirm to proceed."
         )
-    result = jsbridge.delete_item(item_key)
+    result = current_bridge(ctx).delete_item(item_key)
     return emit_js(ctx, result)
 
 
@@ -1054,7 +1067,7 @@ def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int
 @click.pass_context
 def item_duplicates_command(ctx: click.Context, limit: int) -> int:
     """Find duplicate items in the Zotero library (via JS bridge)."""
-    result = jsbridge.find_duplicates(limit=limit)
+    result = current_bridge(ctx).find_duplicates(limit=limit)
     return emit_js(ctx, result)
 
 
@@ -1189,7 +1202,7 @@ def import_json_command(
 @click.pass_context
 def import_doi_command(ctx: click.Context, doi: str, collection_key: str | None, tags: tuple[str, ...]) -> int:
     """Import an item by DOI using Zotero's built-in translator (via JS bridge)."""
-    result = jsbridge.import_from_doi(doi, collection_key=collection_key, tags=list(tags) if tags else None)
+    result = current_bridge(ctx).import_from_doi(doi, collection_key=collection_key, tags=list(tags) if tags else None)
     return emit_js(ctx, result)
 
 
@@ -1200,7 +1213,7 @@ def import_doi_command(ctx: click.Context, doi: str, collection_key: str | None,
 @click.pass_context
 def import_pmid_command(ctx: click.Context, pmid: str, collection_key: str | None, tags: tuple[str, ...]) -> int:
     """Import an item by PMID using Zotero's built-in translator (via JS bridge)."""
-    result = jsbridge.import_from_pmid(pmid, collection_key=collection_key, tags=list(tags) if tags else None)
+    result = current_bridge(ctx).import_from_pmid(pmid, collection_key=collection_key, tags=list(tags) if tags else None)
     return emit_js(ctx, result)
 
 
