@@ -242,12 +242,12 @@ def find_duplicates(limit: int = 50) -> dict:
 
 @server.tool(description="Import an item by DOI. Optionally add to a collection and apply tags.")
 def import_from_doi(doi: str, collection_key: str | None = None, tags: list[str] | None = None) -> dict:
-    return _unwrap_js(jsbridge.import_from_doi(doi, collection_key=collection_key, tags=tags, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().import_from_doi(doi, collection_key=collection_key, tags=tags, library_id=_library_id()))
 
 
 @server.tool(description="Import an item by PubMed ID. Optionally add to a collection and apply tags.")
 def import_from_pmid(pmid: str, collection_key: str | None = None, tags: list[str] | None = None) -> dict:
-    return _unwrap_js(jsbridge.import_from_pmid(pmid, collection_key=collection_key, tags=tags, library_id=_library_id()))
+    return _unwrap_js(_get_bridge().import_from_pmid(pmid, collection_key=collection_key, tags=tags, library_id=_library_id()))
 
 
 @server.tool(description="Add or remove tags on an item.")
@@ -330,7 +330,7 @@ def delete_collection(collection_key: str, delete_items: bool = False) -> dict:
 
 @server.tool(description="Rename a collection or move it under a different parent.")
 def update_collection(collection_key: str, name: str | None = None, parent_key: str | None = None) -> dict:
-    return _unwrap_js(_get_bridge().update_collection(collection_key, name=name, parent_key=parent_key))
+    return _unwrap_js(_get_bridge().update_collection(collection_key, name=name, parent_key=parent_key, library_id=_library_id()))
 
 
 @server.tool(description="Delete an item (move to trash). This is destructive.")
@@ -382,7 +382,7 @@ def create_server(
     executable: str | None = None,
 ) -> FastMCP:
     """Create and return the MCP server, configured with the given options."""
-    global _runtime_cache
+    global _runtime_cache, _bridge_cache
     _runtime_cache = None  # Clear cached runtime so new config takes effect
     _bridge_cache = None  # Clear cached bridge client
     _config.update(
