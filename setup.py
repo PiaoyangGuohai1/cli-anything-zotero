@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PACKAGE_NAME = "cli-anything-zotero"
-PACKAGE_VERSION = "0.2.0"
+PACKAGE_VERSION = "0.2.1"
 
 
 def _handle_metadata_query(argv: list[str]) -> bool:
@@ -75,6 +75,7 @@ setup(
     entry_points={
         "console_scripts": [
             "cli-anything-zotero=cli_anything.zotero.zotero_cli:entrypoint",
+            "zotero-cli=cli_anything.zotero.zotero_cli:entrypoint",
         ],
     },
     package_data={
