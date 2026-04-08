@@ -74,10 +74,10 @@ This CLI fills those gaps through a **JS Bridge** -- a lightweight Zotero plugin
 ### 1. Install the CLI
 
 ```bash
-pip install https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip
+pip install cli-anything-zotero
 ```
 
-Or clone and install in dev mode:
+Or install from source:
 
 ```bash
 git clone https://github.com/PiaoyangGuohai1/cli-anything-zotero.git
@@ -228,7 +228,7 @@ Zotero 内置 HTTP 服务只为浏览器扩展设计，无法添加 PDF、更新
 ### 第一步：安装 CLI
 
 ```bash
-pip install https://github.com/PiaoyangGuohai1/cli-anything-zotero/archive/refs/heads/main.zip
+pip install cli-anything-zotero
 ```
 
 ### 第二步：安装 JS 桥插件（一次性操作）

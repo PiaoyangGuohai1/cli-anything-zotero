@@ -27,7 +27,7 @@ from setuptools import find_namespace_packages, setup
 
 
 ROOT = Path(__file__).parent
-README = ROOT / "cli_anything" / "zotero" / "README.md"
+README = ROOT / "README.md"
 LONG_DESCRIPTION = README.read_text(encoding="utf-8") if README.exists() else ""
 
 
