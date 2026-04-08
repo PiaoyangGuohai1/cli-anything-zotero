@@ -293,9 +293,67 @@ def get_citation_metrics(pmid: str) -> dict:
     return metrics.get_metrics(pmid)
 
 
-@server.tool(description="Execute arbitrary JavaScript code inside Zotero via JS Bridge. Advanced escape hatch.")
+@server.tool(description="Execute arbitrary JavaScript code inside Zotero via JS Bridge. Advanced escape hatch — you can run any Zotero API call.")
 def execute_js(code: str) -> dict:
     return _unwrap_js(jsbridge.execute_js(code))
+
+
+# ===================================================================
+# Tier 6 — Collection & Item Management (write, destructive)
+# ===================================================================
+
+@server.tool(description="Create a new collection. Optionally nest under a parent collection.")
+def create_collection(name: str, parent_key: str | None = None) -> dict:
+    from cli_anything.zotero.core import experimental
+    return experimental.create_collection(_get_runtime(), name=name, parent_key=parent_key, session=_session())
+
+
+@server.tool(description="Delete a collection. Optionally delete all items inside it.")
+def delete_collection(collection_key: str, delete_items: bool = False) -> dict:
+    return _unwrap_js(jsbridge.delete_collection(collection_key, delete_items=delete_items))
+
+
+@server.tool(description="Rename a collection or move it under a different parent.")
+def update_collection(collection_key: str, name: str | None = None, parent_key: str | None = None) -> dict:
+    return _unwrap_js(jsbridge.update_collection(collection_key, name=name, parent_key=parent_key))
+
+
+@server.tool(description="Delete an item (move to trash). This is destructive.")
+def delete_item(item_key: str) -> dict:
+    return _unwrap_js(jsbridge.delete_item(item_key))
+
+
+@server.tool(description="Find PDFs for all items in a collection that are missing them. May take a while.")
+def find_pdfs_in_collection(collection_key: str) -> dict:
+    return _unwrap_js(jsbridge.find_pdfs_in_collection(collection_key))
+
+
+@server.tool(description="Build the semantic vector index for all items. Required before semantic_search/find_similar. May take several minutes for large libraries.")
+def build_index() -> dict:
+    runtime = _get_runtime()
+    zotero_sqlite = str(runtime.data_dir / "zotero.sqlite") if runtime.data_dir else ""
+    return semantic.build_index(zotero_sqlite)
+
+
+@server.tool(description="Analyze an item using AI (requires OPENAI_API_KEY env var). Returns structured summary.")
+def analyze_item(ref: str, question: str = "Summarize the key findings.", model: str = "gpt-4o-mini") -> dict:
+    return analysis.analyze_item(
+        _get_runtime(), ref,
+        question=question,
+        model=model,
+        session=_session(),
+    )
+
+
+@server.tool(description="Import items from a local RIS, BibTeX, or CSL-JSON file into the library.")
+def import_file(path: str, collection_ref: str | None = None, tags: list[str] | None = None) -> dict:
+    from cli_anything.zotero.core import imports
+    return imports.import_file(
+        _get_runtime(), path,
+        collection_ref=collection_ref,
+        tags=list(tags) if tags else [],
+        session=_session(),
+    )
 
 
 # ---------------------------------------------------------------------------
