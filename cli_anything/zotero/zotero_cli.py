@@ -22,6 +22,54 @@ except Exception:  # pragma: no cover - platform-specific import guard
 CONTEXT_SETTINGS = {"ignore_unknown_options": False}
 
 
+def _format_help_all(group: click.Group, ctx: click.Context, prefix: str = "") -> str:
+    """Recursively format help for all commands in a Click group."""
+    lines: list[str] = []
+    for name in sorted(group.list_commands(ctx)):
+        cmd = group.get_command(ctx, name)
+        if cmd is None:
+            continue
+        full_name = f"{prefix} {name}".strip()
+        help_text = cmd.get_short_help_str(limit=80)
+        if isinstance(cmd, click.Group):
+            lines.append(f"\n  {full_name}")
+            lines.append(f"    {help_text}")
+            sub_ctx = click.Context(cmd, info_name=name, parent=ctx)
+            for sub_name in sorted(cmd.list_commands(sub_ctx)):
+                sub_cmd = cmd.get_command(sub_ctx, sub_name)
+                if sub_cmd is None:
+                    continue
+                sub_help = sub_cmd.get_short_help_str(limit=80)
+                params = []
+                for p in sub_cmd.params:
+                    if isinstance(p, click.Argument):
+                        params.append(p.human_readable_name)
+                    elif not p.hidden and p.name != "help":
+                        opt_str = "/".join(p.opts)
+                        if p.is_flag:
+                            params.append(f"[{opt_str}]")
+                        else:
+                            params.append(f"[{opt_str} <{p.type.name}>]")
+                param_str = " ".join(params)
+                lines.append(f"    {full_name} {sub_name} {param_str}")
+                lines.append(f"      {sub_help}")
+        else:
+            params = []
+            for p in cmd.params:
+                if isinstance(p, click.Argument):
+                    params.append(p.human_readable_name)
+                elif not p.hidden and p.name != "help":
+                    opt_str = "/".join(p.opts)
+                    if p.is_flag:
+                        params.append(f"[{opt_str}]")
+                    else:
+                        params.append(f"[{opt_str} <{p.type.name}>]")
+            param_str = " ".join(params)
+            lines.append(f"\n  {full_name} {param_str}")
+            lines.append(f"    {help_text}")
+    return "\n".join(lines)
+
+
 def _propagate_json_flag(ctx: click.Context, args: list[str]) -> list[str]:
     """Extract ``--json`` from *args* and bubble it up to the root context.
 
@@ -66,6 +114,30 @@ class _JsonAwareGroup(click.Group):
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         args = _propagate_json_flag(ctx, args)
         return super().parse_args(ctx, args)
+
+    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Override help to show all commands recursively for the root group."""
+        if ctx.parent is not None:
+            return super().format_help(ctx, formatter)
+        self.format_usage(ctx, formatter)
+        formatter.write("\n")
+        if self.help:
+            formatter.write_paragraph()
+            with formatter.indentation():
+                formatter.write(self.help)
+            formatter.write("\n")
+        opts = []
+        for p in self.params:
+            rv = p.get_help_record(ctx)
+            if rv is not None:
+                opts.append(rv)
+        if opts:
+            with formatter.section("Global Options"):
+                formatter.write_dl(opts)
+        formatter.write("\n")
+        formatter.write("All commands:\n")
+        formatter.write(_format_help_all(self, ctx))
+        formatter.write("\n")
 
 
 class _JsonAwareCommand(click.Command):
