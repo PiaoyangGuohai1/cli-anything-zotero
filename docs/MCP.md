@@ -1,6 +1,6 @@
 # MCP Server Reference
 
-cli-anything-zotero provides an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server with **49 tools**, giving AI clients full access to your local Zotero library.
+cli-anything-zotero provides an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server with **52 tools**, giving AI clients full access to your local Zotero library.
 
 ## Quick Start
 
@@ -50,106 +50,104 @@ Same format — provide `zotero-cli` as the command with `["mcp", "serve"]` as a
 
 ## Tool Reference
 
-### Library & Collections (11 tools)
+Tool names follow the `group_action` pattern, matching the CLI structure (e.g. CLI `item find` → MCP `item_find`).
 
-| Tool | Description |
-|------|-------------|
-| `list_libraries` | List all libraries (user and group) |
-| `list_collections` | List all collections |
-| `find_collections` | Search collections by name |
-| `collection_tree` | Get the full collection hierarchy as a tree |
-| `get_collection` | Get details of a specific collection |
-| `collection_items` | List all items in a collection |
-| `collection_stats` | Get statistics for a collection (item count, type breakdown) |
-| `create_collection` | Create a new collection, optionally nested under a parent |
-| `delete_collection` | Delete a collection, optionally with all items inside |
-| `update_collection` | Rename a collection or move it under a different parent |
-| `find_duplicates` | Find duplicate items in the library |
+### library (1 tool)
 
-### Item Search & Browse (6 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `library_list` | `library list` | List all libraries (user and group) |
 
-| Tool | Description |
-|------|-------------|
-| `find_items` | Search by keyword across title, author, abstract, and tags |
-| `list_items` | List items in the library, optionally limited |
-| `get_item` | Get full metadata for a specific item |
-| `item_children` | Get child items (notes, attachments) |
-| `item_context` | Get rich LLM-ready context (metadata + abstract + notes) |
-| `search_fulltext` | Search inside PDF content via JS Bridge |
+### collection (11 tools)
 
-### Tags (3 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `collection_list` | `collection list` | List all collections |
+| `collection_find` | `collection find` | Search collections by name |
+| `collection_tree` | `collection tree` | Get the full collection hierarchy as a tree |
+| `collection_get` | `collection get` | Get details of a specific collection |
+| `collection_items` | `collection items` | List all items in a collection |
+| `collection_stats` | `collection stats` | Get statistics for a collection |
+| `collection_create` | `collection create` | Create a new collection |
+| `collection_delete` | `collection delete` | Delete a collection |
+| `collection_rename` | `collection rename` | Rename or move a collection |
+| `collection_remove_item` | `collection remove-item` | Remove an item from a collection |
+| `collection_find_pdfs` | `collection find-pdfs` | Find PDFs for all items missing them |
 
-| Tool | Description |
-|------|-------------|
-| `list_tags` | List all tags in the library |
-| `tag_items` | List items that have a specific tag |
-| `manage_tags` | Add or remove tags on an item |
+### item (27 tools)
 
-### Export & Citation (5 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `item_list` | `item list` | List items in the library |
+| `item_find` | `item find` | Search by keyword across title, author, abstract, tags |
+| `item_get` | `item get` | Get full metadata for a specific item |
+| `item_children` | `item children` | Get child items (notes, attachments) |
+| `item_notes` | `item notes` | Get all notes attached to an item |
+| `item_attachments` | `item attachments` | Get all attachments of an item |
+| `item_file` | `item file` | Get the main file (PDF) path |
+| `item_context` | `item context` | Get rich LLM-ready context |
+| `item_export` | `item export` | Export in BibTeX, CSL-JSON, RIS, etc. |
+| `item_citation` | `item citation` | Get a formatted citation |
+| `item_bibliography` | `item bibliography` | Get a formatted bibliography entry |
+| `item_tag` | `item tag` | Add or remove tags on an item |
+| `item_update` | `item update` | Update metadata fields |
+| `item_delete` | `item delete` | Move an item to trash |
+| `item_find_pdf` | `item find-pdf` | Auto-find and download a PDF |
+| `item_attach` | `item attach` | Attach a local PDF file |
+| `item_add_to_collection` | `item add-to-collection` | Add an item to a collection |
+| `item_move_to_collection` | `item move-to-collection` | Move an item to a collection |
+| `item_annotations` | `item annotations` | Get PDF annotations (highlights, comments) |
+| `item_search_annotations` | `item search-annotations` | Search across all annotations |
+| `item_search_fulltext` | `item search-fulltext` | Search inside PDF content |
+| `item_semantic_search` | `item semantic-search` | Semantic vector search |
+| `item_similar` | `item similar` | Find similar items via embeddings |
+| `item_build_index` | `item build-index` | Build the semantic vector index |
+| `item_duplicates` | `item duplicates` | Find duplicate items |
+| `item_metrics` | `item metrics` | Get NIH iCite citation metrics |
+| `item_analyze` | `item analyze` | AI analysis (requires `OPENAI_API_KEY`) |
 
-| Tool | Description |
-|------|-------------|
-| `export_item` | Export in a specific format (BibTeX, CSL-JSON, RIS, etc.) |
-| `citation_item` | Get a formatted citation (APA, Nature, Vancouver, etc.) |
-| `bibliography_item` | Get a formatted bibliography entry |
-| `list_styles` | List available citation styles |
-| `list_searches` | List saved searches |
+### note (2 tools)
 
-### Notes & Attachments (5 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `note_get` | `note get` | Get the full content of a note |
+| `note_add` | `note add` | Add a note to an item |
 
-| Tool | Description |
-|------|-------------|
-| `item_notes` | Get all notes attached to an item |
-| `get_note` | Get the full content of a specific note |
-| `add_note` | Add a note to an item |
-| `item_attachments` | Get all attachments of an item |
-| `item_file` | Get the main file (PDF) path |
+### tag (2 tools)
 
-### Import (3 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `tag_list` | `tag list` | List all tags in the library |
+| `tag_items` | `tag items` | List items with a specific tag |
 
-| Tool | Description |
-|------|-------------|
-| `import_from_doi` | Import by DOI, optionally into a collection with tags |
-| `import_from_pmid` | Import by PubMed ID, optionally into a collection with tags |
-| `import_file` | Import from a local RIS, BibTeX, or CSL-JSON file |
+### search (3 tools)
 
-### PDF Management (4 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `search_list` | `search list` | List saved searches |
+| `search_get` | `search get` | Get details of a saved search |
+| `search_items` | `search items` | Get items matching a saved search |
 
-| Tool | Description |
-|------|-------------|
-| `attach_pdf` | Attach a local PDF file to an item |
-| `find_pdf` | Auto-find and download a PDF from online sources (10-30s) |
-| `find_pdfs_in_collection` | Find PDFs for all items in a collection missing them |
-| `get_annotations` | Get PDF annotations (highlights, comments) |
+### style (1 tool)
 
-### Write & Edit (5 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `style_list` | `style list` | List available citation styles |
 
-| Tool | Description |
-|------|-------------|
-| `update_item_fields` | Update item metadata fields |
-| `add_to_collection` | Add an item to a collection |
-| `remove_from_collection` | Remove an item from a collection (does not delete it) |
-| `delete_item` | Move an item to trash |
-| `trigger_sync` | Trigger Zotero sync to push/pull changes |
+### import (3 tools)
 
-### Advanced (4 tools)
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `import_doi` | `import doi` | Import by DOI |
+| `import_pmid` | `import pmid` | Import by PubMed ID |
+| `import_file` | `import file` | Import from local RIS/BibTeX/CSL-JSON file |
 
-| Tool | Description |
-|------|-------------|
-| `search_annotations` | Search across all PDF annotations by keyword or color |
-| `get_citation_metrics` | Get NIH iCite citation metrics for a PubMed ID |
-| `analyze_item` | AI analysis of an item (requires `OPENAI_API_KEY`) |
-| `execute_js` | Execute arbitrary JavaScript inside Zotero via JS Bridge |
+### Top-level (2 tools)
 
-### Semantic Search (3 tools)
-
-Requires a pre-built embedding index. See [Optional Features](../README.md#optional-features) in the README.
-
-| Tool | Description |
-|------|-------------|
-| `build_index` | Build the semantic vector index for all items (one-time) |
-| `semantic_search` | Vector search across items |
-| `find_similar` | Find items similar to a given item |
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `sync` | `sync` | Trigger Zotero sync |
+| `js` | `js` | Execute arbitrary JavaScript in Zotero |
 
 ---
 
@@ -160,6 +158,6 @@ Requires a pre-built embedding index. See [Optional Features](../README.md#optio
 | **Use when** | Terminal workflows, shell scripts, REPL exploration | AI clients (Claude Desktop, Cursor, LM Studio) |
 | **Interface** | `cli-anything-zotero <command>` | Tools called by the AI client |
 | **Output** | Human-readable or `--json` | Structured for LLM consumption |
-| **Capabilities** | Same 49 operations | Same 49 operations |
+| **Capabilities** | Same 52 operations | Same 52 operations |
 
 Both use the same underlying core — the MCP server wraps the same functions the CLI calls.

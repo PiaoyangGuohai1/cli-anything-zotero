@@ -22,9 +22,25 @@ except Exception:  # pragma: no cover - platform-specific import guard
 CONTEXT_SETTINGS = {"ignore_unknown_options": False}
 
 
-def _format_help_all(group: click.Group, ctx: click.Context, prefix: str = "") -> str:
+def _format_params(cmd: click.Command) -> str:
+    """Format a command's parameters as a compact string for help display."""
+    params = []
+    for p in cmd.params:
+        if isinstance(p, click.Argument):
+            params.append(p.human_readable_name)
+        elif not p.hidden and p.name != "help":
+            opt_str = "/".join(p.opts)
+            if p.is_flag:
+                params.append(f"[{opt_str}]")
+            else:
+                params.append(f"[{opt_str} <{p.type.name}>]")
+    return " ".join(params)
+
+
+def _format_help_all(group: click.Group, ctx: click.Context, prefix: str = "", depth: int = 0) -> str:
     """Recursively format help for all commands in a Click group."""
     lines: list[str] = []
+    indent = "  " * (depth + 1)
     for name in sorted(group.list_commands(ctx)):
         cmd = group.get_command(ctx, name)
         if cmd is None:
@@ -32,41 +48,14 @@ def _format_help_all(group: click.Group, ctx: click.Context, prefix: str = "") -
         full_name = f"{prefix} {name}".strip()
         help_text = cmd.get_short_help_str(limit=80)
         if isinstance(cmd, click.Group):
-            lines.append(f"\n  {full_name}")
-            lines.append(f"    {help_text}")
+            lines.append(f"\n{indent}{full_name}")
+            lines.append(f"{indent}  {help_text}")
             sub_ctx = click.Context(cmd, info_name=name, parent=ctx)
-            for sub_name in sorted(cmd.list_commands(sub_ctx)):
-                sub_cmd = cmd.get_command(sub_ctx, sub_name)
-                if sub_cmd is None:
-                    continue
-                sub_help = sub_cmd.get_short_help_str(limit=80)
-                params = []
-                for p in sub_cmd.params:
-                    if isinstance(p, click.Argument):
-                        params.append(p.human_readable_name)
-                    elif not p.hidden and p.name != "help":
-                        opt_str = "/".join(p.opts)
-                        if p.is_flag:
-                            params.append(f"[{opt_str}]")
-                        else:
-                            params.append(f"[{opt_str} <{p.type.name}>]")
-                param_str = " ".join(params)
-                lines.append(f"    {full_name} {sub_name} {param_str}")
-                lines.append(f"      {sub_help}")
+            lines.append(_format_help_all(cmd, sub_ctx, prefix=full_name, depth=depth + 1))
         else:
-            params = []
-            for p in cmd.params:
-                if isinstance(p, click.Argument):
-                    params.append(p.human_readable_name)
-                elif not p.hidden and p.name != "help":
-                    opt_str = "/".join(p.opts)
-                    if p.is_flag:
-                        params.append(f"[{opt_str}]")
-                    else:
-                        params.append(f"[{opt_str} <{p.type.name}>]")
-            param_str = " ".join(params)
-            lines.append(f"\n  {full_name} {param_str}")
-            lines.append(f"    {help_text}")
+            param_str = _format_params(cmd)
+            lines.append(f"{indent}{full_name} {param_str}")
+            lines.append(f"{indent}  {help_text}")
     return "\n".join(lines)
 
 
@@ -368,6 +357,19 @@ def cli(ctx: click.Context, json_output: bool, backend: str, data_dir: str | Non
     }
     if ctx.invoked_subcommand is None:
         return run_repl(cli_config)
+    return 0
+
+
+@cli.group()
+def library() -> None:
+    """Library inspection commands."""
+
+
+@library.command("list")
+@click.pass_context
+def library_list(ctx: click.Context) -> int:
+    runtime = current_runtime(ctx)
+    emit(ctx, catalog.list_libraries(runtime))
     return 0
 
 
