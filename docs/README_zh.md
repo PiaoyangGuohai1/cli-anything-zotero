@@ -29,21 +29,41 @@
 
 ---
 
-## 为什么需要这个工具？
+## 选择你的模式
 
-Zotero 内置 HTTP 服务只为浏览器扩展设计，无法添加 PDF、更新元数据、触发同步或全文搜索。本工具通过 **JS Bridge** 填补这些空缺——零弹窗、毫秒级响应。
+本工具支持两种模式，**选择适合你 AI 客户端的那个：**
+
+| | CLI 模式 | MCP 模式 |
+|---|---|---|
+| **AI 怎么调用** | Shell 命令（`cli-anything-zotero item find ...`） | 结构化工具调用（不需要命令行） |
+| **适配平台** | 任何能跑 shell 的 AI（Claude Code、ChatGPT、Cursor、Windsurf、Cline 等） | 支持 MCP 的 AI 客户端（Claude Desktop、Cursor、Claude Code、LM Studio 等） |
+| **AI 学习成本** | AI 运行一次 `--help` 即可学会全部 70+ 命令 | 零 — 52 个工具自动注册，参数有类型约束 |
+| **出错率** | AI 偶尔拼错命令（会自动纠正） | 接近零（参数有类型约束） |
+| **安装** | `pip install cli-anything-zotero` | `pip install 'cli-anything-zotero[mcp]'` + 客户端配置 |
+
+> **不确定选哪个？** 如果你的 AI 客户端支持 MCP，选 MCP — 更可靠。否则，CLI 在所有平台都能用。
+
+---
 
 ## 安装
 
-**前提：** Python 3.10+，Zotero 7/8（运行中）。无需其他系统工具。
+**前提：** Python 3.10+，Zotero 7/8（运行中）。
 
-### 第一步：安装 CLI
+### 第一步：安装
 
+**CLI 模式**（适用于所有 AI 助手）：
 ```bash
 pip install cli-anything-zotero
 ```
 
-### 第二步：安装 JS Bridge 插件（一次性操作）
+**MCP 模式**（适用于 Claude Desktop、Cursor、Claude Code 等）：
+```bash
+pip install 'cli-anything-zotero[mcp]'
+```
+
+> 两种模式在同一个包里。`[mcp]` 只是额外安装 MCP 协议依赖。
+
+### 第二步：安装 JS Bridge 插件（一次性操作，两种模式都需要）
 
 ```bash
 cli-anything-zotero app install-plugin
@@ -56,58 +76,100 @@ cli-anything-zotero app install-plugin
 
 > 装好后以后升级都是自动的。
 
-### 第三步：验证
+### 第三步：配置你的 AI 客户端
 
+<details>
+<summary><b>CLI 模式 — 无需额外配置</b></summary>
+
+告诉你的 AI 助手这个工具可用即可。AI 会运行 `cli-anything-zotero --help` 自动发现所有命令。
+
+验证安装：
 ```bash
-cli-anything-zotero app plugin-status --json
 cli-anything-zotero app ping
+cli-anything-zotero js "return Zotero.version"
 ```
+</details>
 
-## 核心功能
+<details>
+<summary><b>MCP 模式 — 配置 AI 客户端</b></summary>
 
-安装完成后开箱即用，无需额外服务。
-
+**Claude Code：**
 ```bash
-# 搜索
-cli-anything-zotero item find "机器学习"
-cli-anything-zotero item search-fulltext "CRISPR"
-cli-anything-zotero collection tree
-
-# 导入
-cli-anything-zotero import doi "10.1038/s41586-024-07871-6" --tag "综述"
-cli-anything-zotero import pmid "37821702"
-
-# 读取与导出
-cli-anything-zotero item get ITEM_KEY
-cli-anything-zotero item export ITEM_KEY --format bibtex
-cli-anything-zotero item context ITEM_KEY            # LLM 友好格式
-
-# 写入与管理
-cli-anything-zotero item update KEY --field title="新标题"
-cli-anything-zotero item attach KEY ./论文.pdf
-cli-anything-zotero note add KEY --text "我的笔记"
-cli-anything-zotero sync
+claude mcp add zotero --scope user -- cli-anything-zotero mcp serve
 ```
 
-## MCP 服务器
-
-```bash
-pip install 'cli-anything-zotero[mcp]'
-zotero-cli mcp serve
-```
-
-客户端配置（Claude Desktop / Cursor / LM Studio）：
-
+**Claude Desktop / Cursor / LM Studio** — 在 MCP 配置文件中添加：
 ```json
 {
   "mcpServers": {
     "zotero": {
-      "command": "zotero-cli",
+      "command": "cli-anything-zotero",
       "args": ["mcp", "serve"]
     }
   }
 }
 ```
+
+重启 AI 客户端后，52 个 Zotero 工具将自动可用。
+
+完整 MCP 参考：**[MCP.md](MCP.md)**
+</details>
+
+### 常见问题
+
+| 问题 | 解决方案 |
+|------|----------|
+| `Cannot resolve Zotero profile directory` | 先启动一次 Zotero |
+| 插件没显示 | 安装 `.xpi` 后重启 Zotero |
+| `endpoint_active: false` | 插件加载失败 — 通过 Zotero UI 重新安装 |
+| Windows: `pip` 不识别 | 安装 Python 后关闭并重新打开 PowerShell |
+
+---
+
+## 用法（CLI 模式）
+
+**搜索与浏览**
+```bash
+cli-anything-zotero item find "机器学习"
+cli-anything-zotero item search-fulltext "CRISPR"
+cli-anything-zotero collection tree
+```
+
+**导入**
+```bash
+cli-anything-zotero import doi "10.1038/s41586-024-07871-6" --tag "综述"
+cli-anything-zotero import pmid "37821702" --collection FMTCPUWN
+cli-anything-zotero import file ./refs.ris
+```
+
+**读取与导出**
+```bash
+cli-anything-zotero item get ITEM_KEY
+cli-anything-zotero item export ITEM_KEY --format bibtex
+cli-anything-zotero item citation ITEM_KEY
+cli-anything-zotero item context ITEM_KEY              # LLM 友好格式
+```
+
+**写入与管理**
+```bash
+cli-anything-zotero item update KEY --field title="新标题"
+cli-anything-zotero item tag KEY --add "重要"
+cli-anything-zotero item attach KEY ./论文.pdf
+cli-anything-zotero item find-pdf KEY
+cli-anything-zotero note add KEY --text "我的笔记"
+cli-anything-zotero sync
+```
+
+**高级功能**
+```bash
+cli-anything-zotero item search-annotations "风险"
+cli-anything-zotero item annotations KEY
+cli-anything-zotero item metrics KEY                   # NIH 引用指标
+cli-anything-zotero collection stats COLLECTION_KEY
+cli-anything-zotero js "return await Zotero.Items.getAll(1).then(i => i.length)"
+```
+
+---
 
 ## 可选功能
 
@@ -116,10 +178,16 @@ zotero-cli mcp serve
 | 语义搜索 | 嵌入 API（Ollama/LM Studio 等） | `item semantic-search`, `item similar`, `item build-index` |
 | AI 分析 | `OPENAI_API_KEY` | `item analyze` |
 
-## 完整命令参考
+---
 
-详见 **[COMMANDS.md](COMMANDS.md)**。
+## 升级到 0.4.0
+
+**MCP 用户注意：** 所有 MCP 工具名已重命名为 `group_action` 格式以匹配 CLI 结构。详见英文 README 的 [Upgrading to 0.4.0](../README.md#upgrading-to-040) 部分。
+
+**CLI 用户：** 无破坏性变更。`--help` 现在一次性显示所有命令。
+
+---
 
 ## 许可证
 
-Apache 2.0
+[Apache 2.0](../LICENSE)
