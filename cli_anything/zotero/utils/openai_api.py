@@ -8,7 +8,7 @@ from typing import Any
 
 
 DEFAULT_API_URL = "https://api.openai.com/v1/chat/completions"
-USER_AGENT = "cli-anything-zotero/0.4.0"
+USER_AGENT = "cli-anything-zotero/0.4.1"
 
 
 def _extract_text(response_payload: dict[str, Any]) -> str:

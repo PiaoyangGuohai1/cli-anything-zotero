@@ -34,7 +34,7 @@ class AgentHarnessPackagingTests(unittest.TestCase):
     def test_setup_reports_expected_version(self):
         result = subprocess.run([sys.executable, str(HARNESS_ROOT / "setup.py"), "--version"], cwd=HARNESS_ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(result.stdout.strip(), "0.4.0")
+        self.assertEqual(result.stdout.strip(), "0.4.1")
 
     def test_skill_generator_regenerates_skill(self):
         output_path = HARNESS_ROOT / "tmp-SKILL.md"
