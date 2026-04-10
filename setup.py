@@ -36,17 +36,20 @@ setup(
     version=PACKAGE_VERSION,
     author="cli-anything contributors",
     author_email="",
-    description="CLI for Zotero 7/8 — let AI manage your library. 40+ commands for search, import, PDF, BibTeX export, and more.",
+    description="CLI & MCP server for Zotero 7/8 — let AI manage your library. 52 MCP tools + 70+ CLI commands for search, import, PDF, BibTeX, notes, and more.",
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     url="https://github.com/PiaoyangGuohai1/cli-anything-zotero",
     project_urls={
         "Issues": "https://github.com/PiaoyangGuohai1/cli-anything-zotero/issues",
         "Documentation": "https://github.com/PiaoyangGuohai1/cli-anything-zotero#installation",
+        "Changelog": "https://github.com/PiaoyangGuohai1/cli-anything-zotero/releases",
     },
     keywords=[
-        "zotero", "cli", "reference-manager", "bibliography", "ai-agents",
-        "academic", "research-tools", "bibtex", "citation-manager", "claude-code",
+        "zotero", "cli", "mcp", "mcp-server", "model-context-protocol",
+        "reference-manager", "bibliography", "ai-agents", "ai", "llm",
+        "academic", "research-tools", "bibtex", "citation-manager",
+        "claude", "claude-code", "cursor", "python",
     ],
     classifiers=[
         "Development Status :: 4 - Beta",
