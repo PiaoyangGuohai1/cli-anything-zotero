@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -54,6 +55,18 @@ class PathDiscoveryTests(unittest.TestCase):
             path = zotero_paths.ensure_local_api_enabled(env["profile_dir"])
             self.assertIsNotNone(path)
             self.assertIn('extensions.zotero.httpServer.localAPI.enabled', path.read_text(encoding="utf-8"))
+
+    def test_install_plugin_xpi_supports_zotero_9_patch_releases(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            xpi_path = zotero_paths.install_plugin_xpi(env["profile_dir"])
+
+            with zipfile.ZipFile(xpi_path) as zf:
+                manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+
+        zotero_app = manifest["applications"]["zotero"]
+        self.assertEqual(zotero_app["strict_min_version"], "6.999")
+        self.assertEqual(zotero_app["strict_max_version"], "9.0.*")
 
     def test_find_executable_returns_none_when_unresolved(self):
         with mock.patch.dict("os.environ", {}, clear=True):

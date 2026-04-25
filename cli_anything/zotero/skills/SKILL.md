@@ -8,7 +8,7 @@ description: >-
 
 # cli-anything-zotero
 
-Agent-native CLI for Zotero 7/8 desktop. 40+ commands across four backends.
+Agent-native CLI for Zotero 7/8/9 desktop. 40+ commands across four backends.
 
 ## Before You Start
 

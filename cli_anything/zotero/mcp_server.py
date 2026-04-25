@@ -27,7 +27,7 @@ from cli_anything.zotero.core import session as session_mod
 server = FastMCP(
     "zotero",
     instructions=(
-        "MCP server for managing Zotero 7/8 libraries. "
+        "MCP server for managing Zotero 7/8/9 libraries. "
         "Provides tools for searching, browsing, importing, exporting, "
         "and managing bibliographic references via local SQLite, "
         "Connector API, and JS Bridge plugin. "

@@ -66,7 +66,7 @@ This tool supports two modes. **Pick the one that fits your AI client:**
 
 ## Installation
 
-**Prerequisites:** Python 3.10+, Zotero 7/8 (running).
+**Prerequisites:** Python 3.10+, Zotero 7/8/9 (running).
 
 ### Step 1: Install the package
 
