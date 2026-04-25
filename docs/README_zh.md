@@ -146,10 +146,17 @@ zotero-cli import file ./refs.ris
 ```bash
 zotero-cli item get ITEM_KEY
 zotero-cli item export ITEM_KEY --format bibtex
+zotero-cli export bib --items KEY1,KEY2 --output refs.bib
 zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM 友好格式
 zotero-cli docx inspect-citations draft.docx  # 检测 Zotero/EndNote/静态引用字段
+zotero-cli docx validate-placeholders draft.docx
 ```
+
+AI 生成 DOCX 时，应插入 `{{zotero:ITEMKEY}}` 或
+`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符，并在定稿前验证。
+`item citation` 和 `item bibliography` 只适合静态预览；它们不是 Word 或
+LibreOffice Zotero 插件可刷新的字段。
 
 **写入与管理**
 ```bash

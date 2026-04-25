@@ -84,21 +84,34 @@ zotero-cli import file ./references.ris --collection COLLECTION_KEY
 ### Export & Citations
 
 ```bash
-# Export BibTeX
+# Export one item in BibTeX
 zotero-cli item export ITEM_KEY --format bibtex
+
+# Export a standalone BibTeX file for downstream tools
+zotero-cli export bib --items KEY1,KEY2 --output refs.bib
+zotero-cli export bib --collection COLLECTION_KEY --output refs.bib
 
 # Other formats: ris, biblatex, csljson, csv, mods, refer
 zotero-cli item export ITEM_KEY --format ris
 
-# Render citation (returns HTML)
+# Render citation preview (static HTML, not a refreshable DOCX field)
 zotero-cli item citation ITEM_KEY --style apa
 
-# Render bibliography entry
+# Render bibliography preview (static HTML, not a refreshable DOCX field)
 zotero-cli item bibliography ITEM_KEY --style apa
 
 # Inspect citation fields inside a DOCX before mixing Zotero/EndNote/static references
 zotero-cli --json docx inspect-citations manuscript.docx
+
+# AI-authored DOCX citations must use real Zotero placeholders, then validate them
+zotero-cli --json docx inspect-placeholders manuscript.docx
+zotero-cli --json docx validate-placeholders manuscript.docx
 ```
+
+When drafting DOCX content with AI, never invent final static citations such as
+`(Author, 2024)` unless the user explicitly asks for static prose. Insert
+`{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}` placeholders from real Zotero
+items and validate the document before handoff.
 
 ### PDF Management
 
@@ -190,8 +203,7 @@ zotero-cli repl
 ```bash
 zotero-cli --json item find "X" --limit 20
 # Pick relevant keys from output, then:
-zotero-cli item export KEY1 --format bibtex
-zotero-cli item export KEY2 --format bibtex
+zotero-cli export bib --items KEY1,KEY2 --output refs.bib
 ```
 
 ### "Import a paper and attach its PDF"

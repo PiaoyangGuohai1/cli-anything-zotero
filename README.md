@@ -165,10 +165,17 @@ zotero-cli import file ./refs.ris
 ```bash
 zotero-cli item get ITEM_KEY
 zotero-cli item export ITEM_KEY --format bibtex
+zotero-cli export bib --items KEY1,KEY2 --output refs.bib
 zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM-ready context
 zotero-cli docx inspect-citations draft.docx  # detect Zotero/EndNote/static citation fields
+zotero-cli docx validate-placeholders draft.docx
 ```
+
+For AI-authored DOCX workflows, use Zotero-bound placeholders such as
+`{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}` and validate them before
+finalizing. `item citation` and `item bibliography` render static previews;
+they are not refreshable Word/LibreOffice Zotero fields.
 
 **Write & Manage**
 ```bash

@@ -85,8 +85,8 @@ Tool names follow the `group_action` pattern, matching the CLI structure (e.g. C
 | `item_file` | `item file` | Get the main file (PDF) path |
 | `item_context` | `item context` | Get rich LLM-ready context |
 | `item_export` | `item export` | Export in BibTeX, CSL-JSON, RIS, etc. |
-| `item_citation` | `item citation` | Get a formatted citation |
-| `item_bibliography` | `item bibliography` | Get a formatted bibliography entry |
+| `item_citation` | `item citation` | Get a static formatted citation preview |
+| `item_bibliography` | `item bibliography` | Get a static formatted bibliography preview |
 | `item_tag` | `item tag` | Add or remove tags on an item |
 | `item_update` | `item update` | Update metadata fields |
 | `item_delete` | `item delete` | Move an item to trash |
@@ -103,6 +103,14 @@ Tool names follow the `group_action` pattern, matching the CLI structure (e.g. C
 | `item_duplicates` | `item duplicates` | Find duplicate items |
 | `item_metrics` | `item metrics` | Get NIH iCite citation metrics |
 | `item_analyze` | `item analyze` | AI analysis (requires `OPENAI_API_KEY`) |
+
+### docx (3 tools)
+
+| Tool | CLI equivalent | Description |
+|------|----------------|-------------|
+| `docx_inspect_citations` | `docx inspect-citations` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text |
+| `docx_inspect_placeholders` | `docx inspect-placeholders` | Detect Zotero placeholders such as `{{zotero:ITEMKEY}}` |
+| `docx_validate_placeholders` | `docx validate-placeholders` | Verify placeholder keys resolve to real local Zotero items |
 
 ### note (2 tools)
 

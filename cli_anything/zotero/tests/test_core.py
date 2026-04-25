@@ -130,6 +130,50 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertEqual(report["field_counts"]["csl"], 1)
         self.assertEqual(report["field_count"], 2)
 
+    def test_inspect_placeholders_detects_zotero_keys(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "placeholders.docx"
+            write_docx_with_document_xml(
+                path,
+                """
+                <w:p><w:r><w:t>First claim {{zotero:REG12345}}.</w:t></w:r></w:p>
+                <w:p><w:r><w:t>Cluster {{ zotero:REG12345, GROUPKEY }} and invalid {{zotero:not a key}}.</w:t></w:r></w:p>
+                """,
+            )
+
+            report = docx_mod.inspect_placeholders(path)
+
+        self.assertEqual(report["placeholder_count"], 3)
+        self.assertEqual(report["citation_count"], 3)
+        self.assertEqual(report["unique_keys"], ["GROUPKEY", "REG12345"])
+        self.assertEqual(report["duplicate_keys"], ["REG12345"])
+        self.assertEqual(report["invalid_placeholders"][0]["raw"], "{{zotero:not a key}}")
+
+    def test_validate_placeholders_resolves_real_zotero_items(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            path = Path(tmpdir) / "validate.docx"
+            write_docx_with_document_xml(
+                path,
+                """
+                <w:p><w:r><w:t>Known {{zotero:REG12345}} and missing {{zotero:NOITEM99}}.</w:t></w:r></w:p>
+                """,
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            report = docx_mod.validate_placeholders(runtime, path)
+
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["valid_count"], 1)
+        self.assertEqual(report["missing_keys"], ["NOITEM99"])
+        self.assertEqual(report["items"][0]["key"], "REG12345")
+        self.assertEqual(report["items"][0]["title"], "Sample Title")
+
 
 class SQLiteInspectionTests(unittest.TestCase):
     def setUp(self) -> None:

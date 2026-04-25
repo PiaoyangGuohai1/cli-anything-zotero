@@ -150,6 +150,82 @@ class CliEntrypointTests(unittest.TestCase):
         self.assertEqual(payload["field_counts"]["endnote"], 1)
         self.assertIn("static-text", payload["systems"])
 
+    def test_docx_inspect_placeholders_reports_zotero_keys(self):
+        docx_path = Path(self.tmpdir.name) / "placeholders.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            '<w:p><w:r><w:t>Claim {{zotero:REG12345, GROUPKEY}}.</w:t></w:r></w:p>',
+        )
+
+        result = self.run_cli(["--json", "docx", "inspect-placeholders", str(docx_path)])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["citation_count"], 2)
+        self.assertEqual(payload["unique_keys"], ["GROUPKEY", "REG12345"])
+
+    def test_docx_validate_placeholders_reports_missing_keys(self):
+        docx_path = Path(self.tmpdir.name) / "validate.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            '<w:p><w:r><w:t>Known {{zotero:REG12345}} and missing {{zotero:NOITEM99}}.</w:t></w:r></w:p>',
+        )
+
+        result = self.run_cli(["--json", "docx", "validate-placeholders", str(docx_path)])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["valid_count"], 1)
+        self.assertEqual(payload["missing_keys"], ["NOITEM99"])
+
+    def test_export_bib_items_writes_output_file(self):
+        output_path = Path(self.tmpdir.name) / "refs.bib"
+        with fake_zotero_http_server(sqlite_path=self.env_paths["sqlite_path"], data_dir=self.env_paths["data_dir"]) as server:
+            result = self.run_cli(
+                [
+                    "--json",
+                    "--backend",
+                    "api",
+                    "export",
+                    "bib",
+                    "--items",
+                    "REG12345",
+                    "--output",
+                    str(output_path),
+                ],
+                extra_env={"ZOTERO_HTTP_PORT": str(server["port"])},
+            )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["item_count"], 1)
+        self.assertEqual(payload["output"], str(output_path))
+        self.assertIn("@article{reg12345}", output_path.read_text(encoding="utf-8"))
+
+    def test_export_bib_collection_writes_output_file(self):
+        output_path = Path(self.tmpdir.name) / "collection.bib"
+        with fake_zotero_http_server(sqlite_path=self.env_paths["sqlite_path"], data_dir=self.env_paths["data_dir"]) as server:
+            result = self.run_cli(
+                [
+                    "--json",
+                    "--backend",
+                    "api",
+                    "export",
+                    "bib",
+                    "--collection",
+                    "GCOLLAAA",
+                    "--output",
+                    str(output_path),
+                ],
+                extra_env={"ZOTERO_HTTP_PORT": str(server["port"])},
+            )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["item_count"], 1)
+        self.assertIn("@article{groupkey}", output_path.read_text(encoding="utf-8"))
+
     def test_repl_builtin_use_library_uses_root_runtime_config(self):
         config = RootCliConfig(
             backend="api",

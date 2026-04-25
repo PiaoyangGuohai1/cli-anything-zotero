@@ -17,7 +17,7 @@ except ImportError:
         "Install it with: pip install 'cli-anything-zotero[mcp]'"
     )
 
-from cli_anything.zotero.core import catalog, discovery, jsbridge, notes, rendering, semantic, analysis, metrics
+from cli_anything.zotero.core import catalog, discovery, docx as docx_tools, jsbridge, notes, rendering, semantic, analysis, metrics
 from cli_anything.zotero.core import session as session_mod
 
 # ---------------------------------------------------------------------------
@@ -218,6 +218,21 @@ def item_citation(ref: str, style: str = "apa") -> dict:
 @server.tool(description="Get a formatted bibliography entry for an item.")
 def item_bibliography(ref: str, style: str = "apa") -> dict:
     return rendering.bibliography_item(_get_runtime(), ref, style=style, session=_session())
+
+
+@server.tool(description="Inspect a DOCX for Zotero, EndNote, CSL/Mendeley-like fields and static citation text.")
+def docx_inspect_citations(path: str, sample_limit: int = 10) -> dict:
+    return docx_tools.inspect_citations(path, sample_limit=sample_limit)
+
+
+@server.tool(description="Inspect a DOCX for Zotero-bound AI citation placeholders like {{zotero:ITEMKEY}}.")
+def docx_inspect_placeholders(path: str, sample_limit: int = 10) -> dict:
+    return docx_tools.inspect_placeholders(path, sample_limit=sample_limit)
+
+
+@server.tool(description="Validate DOCX Zotero placeholders against real local Zotero items.")
+def docx_validate_placeholders(path: str, sample_limit: int = 10) -> dict:
+    return docx_tools.validate_placeholders(_get_runtime(), path, sample_limit=sample_limit, session=_session())
 
 
 @server.tool(description="Add or remove tags on an item.")

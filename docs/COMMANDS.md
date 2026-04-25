@@ -88,6 +88,10 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | Command | Description |
 |---------|-------------|
 | `docx inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text in a DOCX |
+| `docx inspect-placeholders <file.docx>` | Detect AI-authored Zotero placeholders such as `{{zotero:ITEMKEY}}` |
+| `docx validate-placeholders <file.docx>` | Verify placeholder keys resolve to real local Zotero items |
+| `export bib --items KEY1,KEY2 --output refs.bib` | Export selected Zotero items to a standalone BibTeX/BibLaTeX file |
+| `export bib --collection COLLKEY --output refs.bib` | Export top-level items in a collection to a standalone BibTeX/BibLaTeX file |
 | `sync` | Trigger Zotero sync |
 | `js <code> [--wait N]` | Execute arbitrary Zotero JavaScript |
 | `tag list` | List all tags |

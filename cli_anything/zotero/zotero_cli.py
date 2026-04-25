@@ -4,6 +4,7 @@ import json
 import shlex
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import click
@@ -1222,6 +1223,98 @@ def docx_inspect_citations(ctx: click.Context, path: str, sample_limit: int) -> 
         raise click.ClickException(str(exc)) from exc
     emit(ctx, payload)
     return 0
+
+
+@docx.command("inspect-placeholders")
+@click.argument("path")
+@click.option("--sample-limit", default=10, show_default=True, type=int, help="Maximum placeholder samples to include.")
+@click.pass_context
+def docx_inspect_placeholders(ctx: click.Context, path: str, sample_limit: int) -> int:
+    """Inspect DOCX Zotero placeholders such as {{zotero:ITEMKEY}}."""
+    try:
+        payload = docx_tools.inspect_placeholders(path, sample_limit=sample_limit)
+    except (FileNotFoundError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@docx.command("validate-placeholders")
+@click.argument("path")
+@click.option("--sample-limit", default=10, show_default=True, type=int, help="Maximum placeholder samples to include.")
+@click.pass_context
+def docx_validate_placeholders(ctx: click.Context, path: str, sample_limit: int) -> int:
+    """Validate DOCX Zotero placeholders against the local Zotero database."""
+    try:
+        payload = docx_tools.validate_placeholders(current_runtime(ctx), path, sample_limit=sample_limit, session=current_session())
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@cli.group("export")
+def export_group() -> None:
+    """Independent Zotero data export commands."""
+
+
+@export_group.command("bib")
+@click.option("--items", default=None, help="Comma-separated item keys/IDs to export.")
+@click.option("--collection", "collection_ref", default=None, help="Collection key/ID whose top-level items should be exported.")
+@click.option("--format", "fmt", type=click.Choice(["bibtex", "biblatex"]), default="bibtex", show_default=True)
+@click.option("--output", required=True, type=click.Path(dir_okay=False, path_type=Path), help="Output .bib file path.")
+@click.pass_context
+def export_bib_command(ctx: click.Context, items: str | None, collection_ref: str | None, fmt: str, output: Path) -> int:
+    """Export real Zotero items to a standalone BibTeX/BibLaTeX file."""
+    if bool(items) == bool(collection_ref):
+        raise click.ClickException("Pass exactly one of --items or --collection.")
+
+    runtime = current_runtime(ctx)
+    session = current_session()
+    if items:
+        refs = _split_export_refs(items)
+        source: dict[str, Any] = {"type": "items", "refs": refs}
+    else:
+        collection = catalog.get_collection(runtime, collection_ref, session=session)
+        collection_items = [
+            item
+            for item in catalog.collection_items(runtime, collection_ref, session=session)
+            if not item.get("isAttachment") and not item.get("isNote") and not item.get("isAnnotation")
+        ]
+        refs = [str(item["key"]) for item in collection_items]
+        source = {"type": "collection", "collection": collection}
+
+    if not refs:
+        raise click.ClickException("No exportable Zotero items found.")
+
+    try:
+        exported = [rendering.export_item(runtime, ref, fmt, session=session) for ref in refs]
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    output = output.expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    content = "\n\n".join(entry["content"].strip() for entry in exported if entry.get("content"))
+    output.write_text(content + ("\n" if content else ""), encoding="utf-8")
+    emit(
+        ctx,
+        {
+            "action": "export-bib",
+            "format": fmt,
+            "output": str(output),
+            "item_count": len(exported),
+            "items": [{"itemKey": entry["itemKey"], "libraryID": entry["libraryID"]} for entry in exported],
+            "source": source,
+        },
+    )
+    return 0
+
+
+def _split_export_refs(items: str) -> list[str]:
+    refs = [part.strip() for part in items.split(",") if part.strip()]
+    if not refs:
+        raise click.ClickException("--items must contain at least one item key or ID.")
+    return refs
 
 
 @cli.group("import")

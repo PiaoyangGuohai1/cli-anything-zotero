@@ -261,12 +261,22 @@ Backend:
 ```bash
 zotero-cli --json item export REG12345 --format bibtex
 zotero-cli --json item export REG12345 --format csljson
+zotero-cli --json export bib --items REG12345,GROUPKEY --output refs.bib
+zotero-cli --json export bib --collection COLLAAAA --output collection.bib
 zotero-cli --json item citation REG12345 --style apa --locale en-US
 zotero-cli --json item bibliography REG12345 --style apa --locale en-US
 zotero-cli --json docx inspect-citations manuscript.docx
+zotero-cli --json docx inspect-placeholders manuscript.docx
+zotero-cli --json docx validate-placeholders manuscript.docx
 ```
 
 These commands automatically use the correct Local API scope for user and group libraries.
+
+For AI-authored DOCX drafts, cite Zotero items by writing placeholders such as
+`{{zotero:REG12345}}` or `{{zotero:REG12345,GROUPKEY}}`, then run
+`docx validate-placeholders` before handoff. Static `item citation` and
+`item bibliography` output is useful for preview/export only; it is not a
+refreshable Zotero word-processor field.
 
 Supported export formats:
 
@@ -406,6 +416,15 @@ Backend:
 | Command | Purpose | Requires Zotero Running | Backend |
 |---|---|---:|---|
 | `inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text | No | DOCX XML |
+| `inspect-placeholders <file.docx>` | Detect AI Zotero placeholders like `{{zotero:ITEMKEY}}` | No | DOCX XML |
+| `validate-placeholders <file.docx>` | Verify placeholder item keys resolve to real local Zotero records | No | SQLite |
+
+### `export`
+
+| Command | Purpose | Requires Zotero Running | Backend |
+|---|---|---:|---|
+| `bib --items KEY1,KEY2 --output refs.bib` | Export selected real Zotero items to BibTeX/BibLaTeX | Yes | Local API |
+| `bib --collection COLLKEY --output refs.bib` | Export top-level collection items to BibTeX/BibLaTeX | Yes | Local API |
 
 ### `note`
 
