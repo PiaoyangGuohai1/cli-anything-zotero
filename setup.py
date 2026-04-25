@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PACKAGE_NAME = "cli-anything-zotero"
-PACKAGE_VERSION = "0.5.1"
+PACKAGE_VERSION = "0.6.0"
 
 
 def _handle_metadata_query(argv: list[str]) -> bool:

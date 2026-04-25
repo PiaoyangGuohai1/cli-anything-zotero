@@ -148,6 +148,7 @@ zotero-cli item get ITEM_KEY
 zotero-cli item export ITEM_KEY --format bibtex
 zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM 友好格式
+zotero-cli docx inspect-citations draft.docx  # 检测 Zotero/EndNote/静态引用字段
 ```
 
 **写入与管理**

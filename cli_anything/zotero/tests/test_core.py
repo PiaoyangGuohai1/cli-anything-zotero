@@ -8,9 +8,21 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_mod, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.utils import openai_api, zotero_http, zotero_paths, zotero_sqlite
+
+
+def write_docx_with_document_xml(path: Path, body_xml: str) -> None:
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{body_xml}</w:body>"
+        "</w:document>"
+    )
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        zf.writestr("word/document.xml", document_xml)
 
 
 class PathDiscoveryTests(unittest.TestCase):
@@ -73,6 +85,50 @@ class PathDiscoveryTests(unittest.TestCase):
             with mock.patch("cli_anything.zotero.utils.zotero_paths.shutil.which", return_value=None):
                 with mock.patch("pathlib.Path.exists", return_value=False):
                     self.assertIsNone(zotero_paths.find_executable(env={}))
+
+
+class DocxCitationInspectionTests(unittest.TestCase):
+    def test_inspect_citations_detects_endnote_fields_and_static_text(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "endnote.docx"
+            write_docx_with_document_xml(
+                path,
+                """
+                <w:p>
+                  <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+                  <w:r><w:instrText xml:space="preserve"> ADDIN EN.CITE.DATA </w:instrText></w:r>
+                  <w:r><w:fldChar w:fldCharType="end"/></w:r>
+                </w:p>
+                <w:p><w:r><w:t>Prior work (Ritchie et al., 2015) supports this claim.</w:t></w:r></w:p>
+                """,
+            )
+
+            report = docx_mod.inspect_citations(path)
+
+        self.assertIn("endnote", report["systems"])
+        self.assertIn("static-text", report["systems"])
+        self.assertEqual(report["field_counts"]["endnote"], 1)
+        self.assertIn("(Ritchie et al., 2015)", report["static_citation_samples"])
+        self.assertTrue(any("EndNote fields are present" in note for note in report["notes"]))
+
+    def test_inspect_citations_detects_zotero_and_csl_fields(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "zotero.docx"
+            write_docx_with_document_xml(
+                path,
+                """
+                <w:p><w:fldSimple w:instr=" ADDIN ZOTERO_ITEM CSL_CITATION {&quot;citationItems&quot;:[]} ">
+                  <w:r><w:t>(Sample, 2026)</w:t></w:r>
+                </w:fldSimple></w:p>
+                <w:p><w:r><w:instrText xml:space="preserve"> ADDIN CSL_CITATION </w:instrText></w:r></w:p>
+                """,
+            )
+
+            report = docx_mod.inspect_citations(path)
+
+        self.assertEqual(report["field_counts"]["zotero"], 1)
+        self.assertEqual(report["field_counts"]["csl"], 1)
+        self.assertEqual(report["field_count"], 2)
 
 
 class SQLiteInspectionTests(unittest.TestCase):

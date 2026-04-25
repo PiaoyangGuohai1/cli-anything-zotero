@@ -263,6 +263,7 @@ zotero-cli --json item export REG12345 --format bibtex
 zotero-cli --json item export REG12345 --format csljson
 zotero-cli --json item citation REG12345 --style apa --locale en-US
 zotero-cli --json item bibliography REG12345 --style apa --locale en-US
+zotero-cli --json docx inspect-citations manuscript.docx
 ```
 
 These commands automatically use the correct Local API scope for user and group libraries.
@@ -399,6 +400,12 @@ Backend:
 | `analyze <ref>` | Send item context to OpenAI for analysis | Yes for exports only; API key required | OpenAI + local context |
 | `add-to-collection <item> <collection> --experimental` | Append a collection membership | No, Zotero must be closed | experimental SQLite |
 | `move-to-collection <item> <collection> --experimental` | Move an item between collections | No, Zotero must be closed | experimental SQLite |
+
+### `docx`
+
+| Command | Purpose | Requires Zotero Running | Backend |
+|---|---|---:|---|
+| `inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text | No | DOCX XML |
 
 ### `note`
 

@@ -15,6 +15,7 @@ from unittest import mock
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.core import session as session_mod
 from cli_anything.zotero.zotero_cli import RootCliConfig, _handle_repl_builtin, dispatch, mcp_entrypoint, repl_help_text, run_repl
+from cli_anything.zotero.tests.test_core import write_docx_with_document_xml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -68,6 +69,7 @@ class CliEntrypointTests(unittest.TestCase):
         result = self.run_cli(["--help"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("collection", result.stdout)
+        self.assertIn("docx", result.stdout)
         self.assertIn("item", result.stdout)
         self.assertIn("import", result.stdout)
         self.assertIn("note", result.stdout)
@@ -128,6 +130,25 @@ class CliEntrypointTests(unittest.TestCase):
         result = self.run_cli([], input_text="exit\n")
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("zotero-cli", result.stdout)
+
+    def test_docx_inspect_citations_reports_field_systems(self):
+        docx_path = Path(self.tmpdir.name) / "citations.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            """
+            <w:p>
+              <w:r><w:instrText xml:space="preserve"> ADDIN EN.CITE </w:instrText></w:r>
+              <w:r><w:t>[1]</w:t></w:r>
+            </w:p>
+            """,
+        )
+
+        result = self.run_cli(["--json", "docx", "inspect-citations", str(docx_path)])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["field_counts"]["endnote"], 1)
+        self.assertIn("static-text", payload["systems"])
 
     def test_repl_builtin_use_library_uses_root_runtime_config(self):
         config = RootCliConfig(

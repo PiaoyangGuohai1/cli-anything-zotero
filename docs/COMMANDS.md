@@ -87,6 +87,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 
 | Command | Description |
 |---------|-------------|
+| `docx inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text in a DOCX |
 | `sync` | Trigger Zotero sync |
 | `js <code> [--wait N]` | Execute arbitrary Zotero JavaScript |
 | `tag list` | List all tags |

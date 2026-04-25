@@ -95,6 +95,9 @@ zotero-cli item citation ITEM_KEY --style apa
 
 # Render bibliography entry
 zotero-cli item bibliography ITEM_KEY --style apa
+
+# Inspect citation fields inside a DOCX before mixing Zotero/EndNote/static references
+zotero-cli --json docx inspect-citations manuscript.docx
 ```
 
 ### PDF Management

@@ -9,7 +9,7 @@ from typing import Any
 import click
 
 from cli_anything.zotero import __version__
-from cli_anything.zotero.core import analysis, catalog, discovery, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_tools, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
 from cli_anything.zotero.utils import zotero_paths
 from cli_anything.zotero.utils.repl_skin import ReplSkin
 
@@ -1202,6 +1202,25 @@ def style() -> None:
 @click.pass_context
 def style_list(ctx: click.Context) -> int:
     emit(ctx, catalog.list_styles(current_runtime(ctx)))
+    return 0
+
+
+@cli.group()
+def docx() -> None:
+    """DOCX citation inspection commands."""
+
+
+@docx.command("inspect-citations")
+@click.argument("path")
+@click.option("--sample-limit", default=10, show_default=True, type=int, help="Maximum field/static citation samples to include.")
+@click.pass_context
+def docx_inspect_citations(ctx: click.Context, path: str, sample_limit: int) -> int:
+    """Inspect a DOCX file for Zotero, EndNote, CSL, and static citations."""
+    try:
+        payload = docx_tools.inspect_citations(path, sample_limit=sample_limit)
+    except (FileNotFoundError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
     return 0
 
 

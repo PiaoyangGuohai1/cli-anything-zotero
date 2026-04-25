@@ -167,6 +167,7 @@ zotero-cli item get ITEM_KEY
 zotero-cli item export ITEM_KEY --format bibtex
 zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM-ready context
+zotero-cli docx inspect-citations draft.docx  # detect Zotero/EndNote/static citation fields
 ```
 
 **Write & Manage**
