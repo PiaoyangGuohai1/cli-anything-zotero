@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 
 from cli_anything.zotero.utils import zotero_http, zotero_paths
@@ -48,6 +50,13 @@ def build_runtime_context(*, backend: str = "auto", data_dir: str | None = None,
     )
 
 
+def _macos_app_bundle_for_executable(executable: Path) -> Path | None:
+    for parent in (executable, *executable.parents):
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
 def launch_zotero(runtime: RuntimeContext, wait_timeout: int = 30) -> dict[str, Any]:
     executable = runtime.environment.executable
     if executable is None:
@@ -55,7 +64,12 @@ def launch_zotero(runtime: RuntimeContext, wait_timeout: int = 30) -> dict[str, 
     if not executable.exists():
         raise FileNotFoundError(f"Zotero executable not found: {executable}")
 
-    process = subprocess.Popen([str(executable)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    launch_command = [str(executable)]
+    if sys.platform == "darwin":
+        app_bundle = _macos_app_bundle_for_executable(executable)
+        if app_bundle is not None and app_bundle.exists():
+            launch_command = ["open", str(app_bundle)]
+    process = subprocess.Popen(launch_command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     connector_ready = zotero_http.wait_for_endpoint(
         runtime.environment.port,
         "/connector/ping",

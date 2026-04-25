@@ -2,7 +2,7 @@
 
 Queries a local OpenAI-compatible embedding API to convert text to vectors,
 then performs cosine similarity search against a SQLite vector store.
-The vector index can be built with `cli-anything-zotero item build-index`.
+The vector index can be built with `zotero-cli item build-index`.
 """
 
 from __future__ import annotations

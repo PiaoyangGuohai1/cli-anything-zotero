@@ -7,13 +7,14 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.core import session as session_mod
-from cli_anything.zotero.zotero_cli import RootCliConfig, _handle_repl_builtin, dispatch, repl_help_text, run_repl
+from cli_anything.zotero.zotero_cli import RootCliConfig, _handle_repl_builtin, dispatch, mcp_entrypoint, repl_help_text, run_repl
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -21,15 +22,20 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 
 def resolve_cli() -> list[str]:
     force_installed = os.environ.get("CLI_ANYTHING_FORCE_INSTALLED", "").strip() == "1"
-    installed = shutil.which("cli-anything-zotero")
+    installed = shutil.which("zotero-cli") or shutil.which("cli-anything-zotero")
     if installed:
         return [installed]
     scripts_dir = Path(sysconfig.get_path("scripts"))
-    for candidate in (scripts_dir / "cli-anything-zotero.exe", scripts_dir / "cli-anything-zotero"):
+    for candidate in (
+        scripts_dir / "zotero-cli.exe",
+        scripts_dir / "zotero-cli",
+        scripts_dir / "cli-anything-zotero.exe",
+        scripts_dir / "cli-anything-zotero",
+    ):
         if candidate.exists():
             return [str(candidate)]
     if force_installed:
-        raise RuntimeError("cli-anything-zotero not found in PATH. Install it with: py -m pip install -e .")
+        raise RuntimeError("zotero-cli not found in PATH. Install it with: py -m pip install -e .")
     return [sys.executable, "-m", "cli_anything.zotero"]
 
 
@@ -68,8 +74,43 @@ class CliEntrypointTests(unittest.TestCase):
         self.assertIn("session", result.stdout)
 
     def test_dispatch_uses_requested_prog_name(self):
-        result = dispatch(["--help"], prog_name="cli-anything-zotero")
+        result = dispatch(["--help"], prog_name="zotero-cli")
         self.assertEqual(result, 0)
+
+    def test_zotero_mcp_entrypoint_runs_server_directly(self):
+        fake_server = mock.Mock()
+        fake_module = types.SimpleNamespace(create_server=mock.Mock(return_value=fake_server))
+
+        with mock.patch.dict("sys.modules", {"cli_anything.zotero.mcp_server": fake_module}):
+            result = mcp_entrypoint([
+                "--backend",
+                "sqlite",
+                "--data-dir",
+                "D:/zotero-data",
+                "--profile-dir",
+                "D:/zotero-profile",
+                "--executable",
+                "D:/Program Files/Zotero/zotero.exe",
+                "--transport",
+                "sse",
+            ])
+
+        self.assertEqual(result, 0)
+        fake_module.create_server.assert_called_once_with(
+            backend="sqlite",
+            data_dir="D:/zotero-data",
+            profile_dir="D:/zotero-profile",
+            executable="D:/Program Files/Zotero/zotero.exe",
+        )
+        fake_server.run.assert_called_once_with(transport="sse")
+
+    def test_zotero_mcp_entrypoint_reports_missing_mcp_dependency_cleanly(self):
+        with mock.patch.dict("sys.modules", {"cli_anything.zotero.mcp_server": None}):
+            with mock.patch("click.echo") as echo:
+                result = mcp_entrypoint([])
+
+        self.assertEqual(result, 1)
+        self.assertIn("Error:", echo.call_args.args[0])
 
     def test_force_installed_mode_requires_real_command(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -86,7 +127,7 @@ class CliEntrypointTests(unittest.TestCase):
     def test_default_entrypoint_starts_repl(self):
         result = self.run_cli([], input_text="exit\n")
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("cli-anything-zotero", result.stdout)
+        self.assertIn("zotero-cli", result.stdout)
 
     def test_repl_builtin_use_library_uses_root_runtime_config(self):
         config = RootCliConfig(

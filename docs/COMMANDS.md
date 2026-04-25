@@ -1,8 +1,8 @@
 # Full Command Reference
 
-Complete command reference for `cli-anything-zotero`. For installation and quick start, see the [README](../README.md).
+Complete command reference for `zotero-cli`. For installation and quick start, see the [README](../README.md).
 
-> Tip: Run `cli-anything-zotero <command> --help` for detailed usage of any command.
+> Tip: Run `zotero-cli <command> --help` for detailed usage of any command.
 
 ---
 

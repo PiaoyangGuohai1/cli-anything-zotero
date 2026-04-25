@@ -21,15 +21,20 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 
 def resolve_cli() -> list[str]:
     force_installed = os.environ.get("CLI_ANYTHING_FORCE_INSTALLED", "").strip() == "1"
-    installed = shutil.which("cli-anything-zotero")
+    installed = shutil.which("zotero-cli") or shutil.which("cli-anything-zotero")
     if installed:
         return [installed]
     scripts_dir = Path(sysconfig.get_path("scripts"))
-    for candidate in (scripts_dir / "cli-anything-zotero.exe", scripts_dir / "cli-anything-zotero"):
+    for candidate in (
+        scripts_dir / "zotero-cli.exe",
+        scripts_dir / "zotero-cli",
+        scripts_dir / "cli-anything-zotero.exe",
+        scripts_dir / "cli-anything-zotero",
+    ):
         if candidate.exists():
             return [str(candidate)]
     if force_installed:
-        raise RuntimeError("cli-anything-zotero not found in PATH. Install it with: py -m pip install -e .")
+        raise RuntimeError("zotero-cli not found in PATH. Install it with: py -m pip install -e .")
     return [sys.executable, "-m", "cli_anything.zotero"]
 
 
@@ -110,17 +115,32 @@ class ZoteroFullE2E(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        discovery.ensure_live_api_enabled()
+        pref_path = discovery.ensure_live_api_enabled()
         runtime = discovery.build_runtime_context()
-        if not runtime.connector_available:
-            discovery.launch_zotero(runtime, wait_timeout=45)
+        launch_result = None
+        if not (runtime.connector_available and runtime.local_api_available):
+            launch_result = discovery.launch_zotero(runtime, wait_timeout=45)
         cls.runtime = discovery.build_runtime_context()
+        cls.launch_result = launch_result
+        if not (cls.runtime.connector_available and cls.runtime.local_api_available):
+            details = {
+                "local_api_pref_path": pref_path,
+                "launch_result": launch_result,
+                "status": cls.runtime.to_status_payload(),
+            }
+            raise AssertionError(
+                "Real Zotero E2E requires a running Zotero HTTP connector and Local API.\n"
+                f"{json.dumps(details, ensure_ascii=False, indent=2)}"
+            )
 
     def run_cli(self, args):
         env = os.environ.copy()
         if uses_module_fallback(self.CLI_BASE):
             env["PYTHONPATH"] = str(REPO_ROOT / "zotero" / "agent-harness") + os.pathsep + env.get("PYTHONPATH", "")
-        return subprocess.run(self.CLI_BASE + args, capture_output=True, text=True, env=env, timeout=60)
+        result = subprocess.run(self.CLI_BASE + args, capture_output=True, text=True, env=env, timeout=60)
+        if result.returncode != 0:
+            result.stderr = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        return result
 
     def run_cli_with_retry(self, args, retries: int = 2):
         last = None

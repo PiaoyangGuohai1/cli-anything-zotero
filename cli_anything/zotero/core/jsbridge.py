@@ -10,7 +10,7 @@ Two transport modes (auto-selected):
    installed and the platform is macOS.
 
 Requirements: Zotero 7+ running with the CLI Bridge plugin installed.
-              Install via: cli-anything-zotero app install-plugin
+              Install via: zotero-cli app install-plugin
 
 Usage::
 
@@ -65,7 +65,7 @@ def _check_applescript_platform() -> None:
     if sys.platform != "darwin":
         raise RuntimeError(
             "AppleScript is not available on this platform. "
-            "Install the CLI Bridge plugin: cli-anything-zotero app install-plugin"
+            "Install the CLI Bridge plugin: zotero-cli app install-plugin"
         )
 
 
@@ -228,7 +228,7 @@ class JSBridgeClient:
             warnings.warn(
                 "AppleScript bridge registration is deprecated. "
                 "Install the CLI Bridge plugin instead: "
-                "cli-anything-zotero app install-plugin",
+                "zotero-cli app install-plugin",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -242,7 +242,7 @@ class JSBridgeClient:
             "data": None,
             "error": (
                 "JS Bridge endpoint not available. "
-                "Install the CLI Bridge plugin: cli-anything-zotero app install-plugin, "
+                "Install the CLI Bridge plugin: zotero-cli app install-plugin, "
                 "then restart Zotero."
             ),
         }

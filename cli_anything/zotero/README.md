@@ -42,7 +42,7 @@ cd zotero/agent-harness
 py -m pip install -e .
 ```
 
-If `cli-anything-zotero` is not recognized afterwards, your Python Scripts
+If `zotero-cli` is not recognized afterwards, your Python Scripts
 directory is likely not on `PATH`. You can still use:
 
 ```bash
@@ -56,8 +56,8 @@ Some commands require Zotero's Local API. Zotero 7 keeps it disabled by default.
 Enable it from the CLI:
 
 ```bash
-cli-anything-zotero --json app enable-local-api
-cli-anything-zotero --json app enable-local-api --launch
+zotero-cli --json app enable-local-api
+zotero-cli --json app enable-local-api --launch
 ```
 
 Or manually add this to the active profile's `user.js`:
@@ -71,11 +71,11 @@ Then restart Zotero.
 ## Quickstart
 
 ```bash
-cli-anything-zotero --json app status
-cli-anything-zotero --json collection list
-cli-anything-zotero --json item list --limit 10
-cli-anything-zotero --json item find "embodied intelligence" --limit 5
-cli-anything-zotero
+zotero-cli --json app status
+zotero-cli --json collection list
+zotero-cli --json item list --limit 10
+zotero-cli --json item find "embodied intelligence" --limit 5
+zotero-cli
 ```
 
 ## Library Context
@@ -92,10 +92,10 @@ cli-anything-zotero
 Use Zotero's official connector write path.
 
 ```bash
-cli-anything-zotero --json import file .\paper.ris --collection COLLAAAA --tag review
-cli-anything-zotero --json import json .\items.json --collection COLLAAAA --tag imported
-cli-anything-zotero --json import file .\paper.ris --collection COLLAAAA --attachments-manifest .\attachments.json
-cli-anything-zotero --json import json .\items-with-pdf.json --collection COLLAAAA --attachment-timeout 90
+zotero-cli --json import file .\paper.ris --collection COLLAAAA --tag review
+zotero-cli --json import json .\items.json --collection COLLAAAA --tag imported
+zotero-cli --json import file .\paper.ris --collection COLLAAAA --attachments-manifest .\attachments.json
+zotero-cli --json import json .\items-with-pdf.json --collection COLLAAAA --attachment-timeout 90
 ```
 
 `import json` supports a harness-private inline `attachments` array on each item:
@@ -152,7 +152,7 @@ Zotero must be running:
 ### 2. Find a Collection
 
 ```bash
-cli-anything-zotero --json collection find "robotics"
+zotero-cli --json collection find "robotics"
 ```
 
 Use this when you remember a folder name but not its key or ID.
@@ -168,9 +168,9 @@ Zotero must be running:
 ### 3. Find a Paper by Keyword or Full Title
 
 ```bash
-cli-anything-zotero --json item find "foundation model"
-cli-anything-zotero --json item find "A Very Specific Paper Title" --exact-title
-cli-anything-zotero --json item find "vision" --collection COLLAAAA --limit 10
+zotero-cli --json item find "foundation model"
+zotero-cli --json item find "A Very Specific Paper Title" --exact-title
+zotero-cli --json item find "vision" --collection COLLAAAA --limit 10
 ```
 
 Behavior:
@@ -194,10 +194,10 @@ Zotero must be running:
 ### 4. Read a Collection or One Item
 
 ```bash
-cli-anything-zotero --json collection items COLLAAAA
-cli-anything-zotero --json item get REG12345
-cli-anything-zotero --json item attachments REG12345
-cli-anything-zotero --json item file REG12345
+zotero-cli --json collection items COLLAAAA
+zotero-cli --json item get REG12345
+zotero-cli --json item attachments REG12345
+zotero-cli --json item file REG12345
 ```
 
 Typical use:
@@ -217,8 +217,8 @@ Zotero must be running:
 ### 5. Read Notes for a Paper
 
 ```bash
-cli-anything-zotero --json item notes REG12345
-cli-anything-zotero --json note get NOTEKEY
+zotero-cli --json item notes REG12345
+zotero-cli --json note get NOTEKEY
 ```
 
 Responsibilities:
@@ -237,8 +237,8 @@ Zotero must be running:
 ### 6. Add a Child Note to a Paper
 
 ```bash
-cli-anything-zotero --json note add REG12345 --text "Key takeaway: ..."
-cli-anything-zotero --json note add REG12345 --file .\summary.md --format markdown
+zotero-cli --json note add REG12345 --text "Key takeaway: ..."
+zotero-cli --json note add REG12345 --file .\summary.md --format markdown
 ```
 
 Behavior:
@@ -259,10 +259,10 @@ Backend:
 ### 7. Export BibTeX, CSL JSON, and Citations
 
 ```bash
-cli-anything-zotero --json item export REG12345 --format bibtex
-cli-anything-zotero --json item export REG12345 --format csljson
-cli-anything-zotero --json item citation REG12345 --style apa --locale en-US
-cli-anything-zotero --json item bibliography REG12345 --style apa --locale en-US
+zotero-cli --json item export REG12345 --format bibtex
+zotero-cli --json item export REG12345 --format csljson
+zotero-cli --json item citation REG12345 --style apa --locale en-US
+zotero-cli --json item bibliography REG12345 --style apa --locale en-US
 ```
 
 These commands automatically use the correct Local API scope for user and group libraries.
@@ -288,7 +288,7 @@ Zotero must be running:
 ### 8. Produce LLM-Ready Context
 
 ```bash
-cli-anything-zotero --json item context REG12345 --include-notes --include-links --include-bibtex
+zotero-cli --json item context REG12345 --include-notes --include-links --include-bibtex
 ```
 
 This command is the stable, model-independent path for AI workflows. It returns:
@@ -309,7 +309,7 @@ Backend:
 
 ```bash
 set OPENAI_API_KEY=...
-cli-anything-zotero --json item analyze REG12345 --question "What is this paper's likely contribution?" --model gpt-5.4-mini --include-notes
+zotero-cli --json item analyze REG12345 --question "What is this paper's likely contribution?" --model gpt-5.4-mini --include-notes
 ```
 
 Behavior:
@@ -334,10 +334,10 @@ These commands write directly to `zotero.sqlite` and are intentionally marked
 experimental.
 
 ```bash
-cli-anything-zotero --json collection create "New Topic" --parent COLLAAAA --experimental
-cli-anything-zotero --json item add-to-collection REG12345 COLLBBBB --experimental
-cli-anything-zotero --json item move-to-collection REG67890 COLLAAAA --from COLLBBBB --experimental
-cli-anything-zotero --json item move-to-collection REG67890 COLLAAAA --all-other-collections --experimental
+zotero-cli --json collection create "New Topic" --parent COLLAAAA --experimental
+zotero-cli --json item add-to-collection REG12345 COLLBBBB --experimental
+zotero-cli --json item move-to-collection REG67890 COLLAAAA --from COLLBBBB --experimental
+zotero-cli --json item move-to-collection REG67890 COLLAAAA --all-other-collections --experimental
 ```
 
 Safety rules:
@@ -445,7 +445,7 @@ REPL and one-shot commands.
 Run without a subcommand to enter the stateful REPL:
 
 ```bash
-cli-anything-zotero
+zotero-cli
 ```
 
 Useful builtins:

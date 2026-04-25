@@ -35,7 +35,7 @@
 
 | | CLI 模式 | MCP 模式 |
 |---|---|---|
-| **AI 怎么调用** | Shell 命令（`cli-anything-zotero item find ...`） | 结构化工具调用（不需要命令行） |
+| **AI 怎么调用** | Shell 命令（`zotero-cli item find ...`） | 结构化工具调用（不需要命令行） |
 | **适配平台** | 任何能跑 shell 的 AI（Claude Code、ChatGPT、Cursor、Windsurf、Cline 等） | 支持 MCP 的 AI 客户端（Claude Desktop、Cursor、Claude Code、LM Studio 等） |
 | **AI 学习成本** | AI 运行一次 `--help` 即可学会全部 70+ 命令 | 零 — 52 个工具自动注册，参数有类型约束 |
 | **出错率** | AI 偶尔拼错命令（会自动纠正） | 接近零（参数有类型约束） |
@@ -62,11 +62,12 @@ pip install 'cli-anything-zotero[mcp]'
 ```
 
 > 两种模式在同一个包里。`[mcp]` 只是额外安装 MCP 协议依赖。
+> 包名仍然是 `cli-anything-zotero`；面向用户的命令是 `zotero-cli`（CLI）和 `zotero-mcp`（MCP）。旧的 `cli-anything-zotero` 命令会继续作为兼容别名保留。
 
 ### 第二步：安装 JS Bridge 插件（一次性操作，两种模式都需要）
 
 ```bash
-cli-anything-zotero app install-plugin
+zotero-cli app install-plugin
 ```
 
 首次安装需要在 Zotero 中手动导入：
@@ -81,12 +82,12 @@ cli-anything-zotero app install-plugin
 <details>
 <summary><b>CLI 模式 — 无需额外配置</b></summary>
 
-告诉你的 AI 助手这个工具可用即可。AI 会运行 `cli-anything-zotero --help` 自动发现所有命令。
+告诉你的 AI 助手这个工具可用即可。AI 会运行 `zotero-cli --help` 自动发现所有命令。
 
 验证安装：
 ```bash
-cli-anything-zotero app ping
-cli-anything-zotero js "return Zotero.version"
+zotero-cli app ping
+zotero-cli js "return Zotero.version"
 ```
 </details>
 
@@ -95,7 +96,7 @@ cli-anything-zotero js "return Zotero.version"
 
 **Claude Code：**
 ```bash
-claude mcp add zotero --scope user -- cli-anything-zotero mcp serve
+claude mcp add zotero --scope user -- zotero-mcp
 ```
 
 **Claude Desktop / Cursor / LM Studio** — 在 MCP 配置文件中添加：
@@ -103,8 +104,7 @@ claude mcp add zotero --scope user -- cli-anything-zotero mcp serve
 {
   "mcpServers": {
     "zotero": {
-      "command": "cli-anything-zotero",
-      "args": ["mcp", "serve"]
+      "command": "zotero-mcp"
     }
   }
 }
@@ -130,43 +130,43 @@ claude mcp add zotero --scope user -- cli-anything-zotero mcp serve
 
 **搜索与浏览**
 ```bash
-cli-anything-zotero item find "机器学习"
-cli-anything-zotero item search-fulltext "CRISPR"
-cli-anything-zotero collection tree
+zotero-cli item find "机器学习"
+zotero-cli item search-fulltext "CRISPR"
+zotero-cli collection tree
 ```
 
 **导入**
 ```bash
-cli-anything-zotero import doi "10.1038/s41586-024-07871-6" --tag "综述"
-cli-anything-zotero import pmid "37821702" --collection FMTCPUWN
-cli-anything-zotero import file ./refs.ris
+zotero-cli import doi "10.1038/s41586-024-07871-6" --tag "综述"
+zotero-cli import pmid "37821702" --collection FMTCPUWN
+zotero-cli import file ./refs.ris
 ```
 
 **读取与导出**
 ```bash
-cli-anything-zotero item get ITEM_KEY
-cli-anything-zotero item export ITEM_KEY --format bibtex
-cli-anything-zotero item citation ITEM_KEY
-cli-anything-zotero item context ITEM_KEY              # LLM 友好格式
+zotero-cli item get ITEM_KEY
+zotero-cli item export ITEM_KEY --format bibtex
+zotero-cli item citation ITEM_KEY
+zotero-cli item context ITEM_KEY              # LLM 友好格式
 ```
 
 **写入与管理**
 ```bash
-cli-anything-zotero item update KEY --field title="新标题"
-cli-anything-zotero item tag KEY --add "重要"
-cli-anything-zotero item attach KEY ./论文.pdf
-cli-anything-zotero item find-pdf KEY
-cli-anything-zotero note add KEY --text "我的笔记"
-cli-anything-zotero sync
+zotero-cli item update KEY --field title="新标题"
+zotero-cli item tag KEY --add "重要"
+zotero-cli item attach KEY ./论文.pdf
+zotero-cli item find-pdf KEY
+zotero-cli note add KEY --text "我的笔记"
+zotero-cli sync
 ```
 
 **高级功能**
 ```bash
-cli-anything-zotero item search-annotations "风险"
-cli-anything-zotero item annotations KEY
-cli-anything-zotero item metrics KEY                   # NIH 引用指标
-cli-anything-zotero collection stats COLLECTION_KEY
-cli-anything-zotero js "return await Zotero.Items.getAll(1).then(i => i.length)"
+zotero-cli item search-annotations "风险"
+zotero-cli item annotations KEY
+zotero-cli item metrics KEY                   # NIH 引用指标
+zotero-cli collection stats COLLECTION_KEY
+zotero-cli js "return await Zotero.Items.getAll(1).then(i => i.length)"
 ```
 
 ---

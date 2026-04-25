@@ -9,7 +9,7 @@ cli-anything-zotero provides an [MCP (Model Context Protocol)](https://modelcont
 pip install 'cli-anything-zotero[mcp]'
 
 # Start the server
-zotero-cli mcp serve
+zotero-mcp
 ```
 
 ## Client Configuration
@@ -20,8 +20,7 @@ zotero-cli mcp serve
 {
   "mcpServers": {
     "zotero": {
-      "command": "zotero-cli",
-      "args": ["mcp", "serve"]
+      "command": "zotero-mcp"
     }
   }
 }
@@ -34,15 +33,14 @@ Add to Cursor Settings → MCP Servers:
 ```json
 {
   "zotero": {
-    "command": "zotero-cli",
-    "args": ["mcp", "serve"]
+    "command": "zotero-mcp"
   }
 }
 ```
 
 ### LM Studio / Other MCP Clients
 
-Same format — provide `zotero-cli` as the command with `["mcp", "serve"]` as args.
+Same format — provide `zotero-mcp` as the command.
 
 > **Note:** The server uses **stdio** transport by default.
 
@@ -156,7 +154,7 @@ Tool names follow the `group_action` pattern, matching the CLI structure (e.g. C
 | | CLI | MCP |
 |---|---|---|
 | **Use when** | Terminal workflows, shell scripts, REPL exploration | AI clients (Claude Desktop, Cursor, LM Studio) |
-| **Interface** | `cli-anything-zotero <command>` | Tools called by the AI client |
+| **Interface** | `zotero-cli <command>` | Tools called by the AI client |
 | **Output** | Human-readable or `--json` | Structured for LLM consumption |
 | **Capabilities** | Same 52 operations | Same 52 operations |
 

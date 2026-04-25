@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PACKAGE_NAME = "cli-anything-zotero"
-PACKAGE_VERSION = "0.4.1"
+PACKAGE_VERSION = "0.5.0"
 
 
 def _handle_metadata_query(argv: list[str]) -> bool:
@@ -36,7 +36,7 @@ setup(
     version=PACKAGE_VERSION,
     author="cli-anything contributors",
     author_email="",
-    description="CLI & MCP server for Zotero 7/8 — let AI manage your library. 52 MCP tools + 70+ CLI commands for search, import, PDF, BibTeX, notes, and more.",
+    description="Zotero CLI and MCP server package — installs zotero-cli and zotero-mcp for AI-assisted library workflows.",
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     url="https://github.com/PiaoyangGuohai1/cli-anything-zotero",
@@ -82,6 +82,7 @@ setup(
         "console_scripts": [
             "cli-anything-zotero=cli_anything.zotero.zotero_cli:entrypoint",
             "zotero-cli=cli_anything.zotero.zotero_cli:entrypoint",
+            "zotero-mcp=cli_anything.zotero.zotero_cli:mcp_entrypoint",
         ],
     },
     package_data={

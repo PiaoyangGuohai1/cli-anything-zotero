@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -244,6 +245,31 @@ class HttpUtilityTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "could not be resolved"):
                 discovery.launch_zotero(runtime)
 
+    def test_launch_zotero_opens_macos_app_bundle_from_inner_executable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            app_bundle = Path(tmpdir) / "Applications" / "Zotero.app"
+            executable = app_bundle / "Contents" / "MacOS" / "zotero"
+            executable.parent.mkdir(parents=True)
+            executable.write_text("", encoding="utf-8")
+            runtime = discovery.build_runtime_context(
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(executable),
+            )
+            runtime.environment.local_api_enabled_configured = True
+
+            with mock.patch("sys.platform", "darwin"):
+                with mock.patch("cli_anything.zotero.core.discovery.subprocess.Popen") as popen:
+                    with mock.patch("cli_anything.zotero.core.discovery.zotero_http.wait_for_endpoint", side_effect=[True, True]) as wait:
+                        popen.return_value.pid = 123
+                        payload = discovery.launch_zotero(runtime)
+
+            popen.assert_called_once_with(["open", str(app_bundle)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.assertEqual(wait.call_count, 2)
+            self.assertTrue(payload["connector_ready"])
+            self.assertTrue(payload["local_api_ready"])
+
 
 class ImportCoreTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -330,6 +356,7 @@ class ImportCoreTests(unittest.TestCase):
                         payload = imports_mod.import_json(
                             self.runtime,
                             json_path,
+                            collection_ref="C1",
                             attachment_timeout=91,
                         )
 
@@ -371,6 +398,7 @@ class ImportCoreTests(unittest.TestCase):
                                 payload = imports_mod.import_json(
                                     self.runtime,
                                     json_path,
+                                    collection_ref="C1",
                                     attachment_timeout=47,
                                 )
 
@@ -403,7 +431,7 @@ class ImportCoreTests(unittest.TestCase):
             with mock.patch("cli_anything.zotero.utils.zotero_http.connector_save_items"):
                 with mock.patch("cli_anything.zotero.utils.zotero_http.connector_update_session"):
                     with mock.patch("cli_anything.zotero.utils.zotero_http.connector_save_attachment") as save_attachment:
-                        payload = imports_mod.import_json(self.runtime, json_path)
+                        payload = imports_mod.import_json(self.runtime, json_path, collection_ref="C1")
 
         save_attachment.assert_called_once()
         self.assertEqual(payload["attachment_summary"]["created_count"], 1)
@@ -459,6 +487,7 @@ class ImportCoreTests(unittest.TestCase):
                         payload = imports_mod.import_file(
                             self.runtime,
                             ris_path,
+                            collection_ref="C1",
                             attachments_manifest=manifest_path,
                         )
 
@@ -497,6 +526,7 @@ class ImportCoreTests(unittest.TestCase):
                         payload = imports_mod.import_file(
                             self.runtime,
                             ris_path,
+                            collection_ref="C1",
                             attachments_manifest=manifest_path,
                         )
 
@@ -530,6 +560,7 @@ class ImportCoreTests(unittest.TestCase):
                         payload = imports_mod.import_file(
                             self.runtime,
                             ris_path,
+                            collection_ref="C1",
                             attachments_manifest=manifest_path,
                         )
 

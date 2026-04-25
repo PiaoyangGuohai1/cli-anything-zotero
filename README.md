@@ -54,7 +54,7 @@ This tool supports two modes. **Pick the one that fits your AI client:**
 
 | | CLI Mode | MCP Mode |
 |---|---|---|
-| **How AI calls it** | Shell commands (`cli-anything-zotero item find ...`) | Structured tool calls (no command-line needed) |
+| **How AI calls it** | Shell commands (`zotero-cli item find ...`) | Structured tool calls (no command-line needed) |
 | **Works with** | Any AI that can run shell commands (Claude Code, ChatGPT, Cursor, Windsurf, Cline, etc.) | AI clients with MCP support (Claude Desktop, Cursor, Claude Code, LM Studio, etc.) |
 | **AI learning curve** | AI runs `--help` once to discover all 70+ commands | Zero — 52 tools are auto-registered with typed parameters |
 | **Error rate** | Occasional typos by AI (self-corrects) | Near-zero (parameters are type-constrained) |
@@ -81,11 +81,12 @@ pip install 'cli-anything-zotero[mcp]'
 ```
 
 > Both modes are included in the same package. The `[mcp]` extra just adds MCP protocol dependencies.
+> The package name stays `cli-anything-zotero`; the user-facing commands are `zotero-cli` for CLI workflows and `zotero-mcp` for MCP clients. The old `cli-anything-zotero` command remains as a compatibility alias.
 
 ### Step 2: Install the JS Bridge Plugin (one-time, both modes)
 
 ```bash
-cli-anything-zotero app install-plugin
+zotero-cli app install-plugin
 ```
 
 First install requires manual steps in Zotero:
@@ -100,12 +101,12 @@ First install requires manual steps in Zotero:
 <details>
 <summary><b>CLI Mode — No extra setup needed</b></summary>
 
-Just tell your AI assistant the tool is available. It will run `cli-anything-zotero --help` to discover all commands automatically.
+Just tell your AI assistant the tool is available. It will run `zotero-cli --help` to discover all commands automatically.
 
 Verify it works:
 ```bash
-cli-anything-zotero app ping
-cli-anything-zotero js "return Zotero.version"
+zotero-cli app ping
+zotero-cli js "return Zotero.version"
 ```
 </details>
 
@@ -114,7 +115,7 @@ cli-anything-zotero js "return Zotero.version"
 
 **Claude Code:**
 ```bash
-claude mcp add zotero --scope user -- cli-anything-zotero mcp serve
+claude mcp add zotero --scope user -- zotero-mcp
 ```
 
 **Claude Desktop / Cursor / LM Studio** — add to your MCP config file:
@@ -122,8 +123,7 @@ claude mcp add zotero --scope user -- cli-anything-zotero mcp serve
 {
   "mcpServers": {
     "zotero": {
-      "command": "cli-anything-zotero",
-      "args": ["mcp", "serve"]
+      "command": "zotero-mcp"
     }
   }
 }
@@ -149,43 +149,43 @@ Full MCP reference: **[docs/MCP.md](docs/MCP.md)**
 
 **Search & Browse**
 ```bash
-cli-anything-zotero item find "machine learning"
-cli-anything-zotero item search-fulltext "CRISPR"
-cli-anything-zotero collection tree
+zotero-cli item find "machine learning"
+zotero-cli item search-fulltext "CRISPR"
+zotero-cli collection tree
 ```
 
 **Import**
 ```bash
-cli-anything-zotero import doi "10.1038/s41586-024-07871-6" --tag "review"
-cli-anything-zotero import pmid "37821702" --collection FMTCPUWN
-cli-anything-zotero import file ./refs.ris
+zotero-cli import doi "10.1038/s41586-024-07871-6" --tag "review"
+zotero-cli import pmid "37821702" --collection FMTCPUWN
+zotero-cli import file ./refs.ris
 ```
 
 **Read & Export**
 ```bash
-cli-anything-zotero item get ITEM_KEY
-cli-anything-zotero item export ITEM_KEY --format bibtex
-cli-anything-zotero item citation ITEM_KEY
-cli-anything-zotero item context ITEM_KEY              # LLM-ready context
+zotero-cli item get ITEM_KEY
+zotero-cli item export ITEM_KEY --format bibtex
+zotero-cli item citation ITEM_KEY
+zotero-cli item context ITEM_KEY              # LLM-ready context
 ```
 
 **Write & Manage**
 ```bash
-cli-anything-zotero item update KEY --field title="New Title"
-cli-anything-zotero item tag KEY --add "important"
-cli-anything-zotero item attach KEY ./paper.pdf
-cli-anything-zotero item find-pdf KEY
-cli-anything-zotero note add KEY --text "My note"
-cli-anything-zotero sync
+zotero-cli item update KEY --field title="New Title"
+zotero-cli item tag KEY --add "important"
+zotero-cli item attach KEY ./paper.pdf
+zotero-cli item find-pdf KEY
+zotero-cli note add KEY --text "My note"
+zotero-cli sync
 ```
 
 **Advanced**
 ```bash
-cli-anything-zotero item search-annotations "risk"
-cli-anything-zotero item annotations KEY
-cli-anything-zotero item metrics KEY                   # NIH citation metrics
-cli-anything-zotero collection stats COLLECTION_KEY
-cli-anything-zotero js "return await Zotero.Items.getAll(1).then(i => i.length)"
+zotero-cli item search-annotations "risk"
+zotero-cli item annotations KEY
+zotero-cli item metrics KEY                   # NIH citation metrics
+zotero-cli collection stats COLLECTION_KEY
+zotero-cli js "return await Zotero.Items.getAll(1).then(i => i.length)"
 ```
 
 Full command reference: **[docs/COMMANDS.md](docs/COMMANDS.md)**
@@ -201,9 +201,9 @@ These require extra services. Everything else works without them.
 Any OpenAI-compatible `/v1/embeddings` endpoint ([Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), OpenAI, etc.).
 
 ```bash
-cli-anything-zotero item build-index                            # one-time
-cli-anything-zotero item semantic-search "cardiovascular risk"
-cli-anything-zotero item similar ITEM_KEY
+zotero-cli item build-index                            # one-time
+zotero-cli item semantic-search "cardiovascular risk"
+zotero-cli item similar ITEM_KEY
 ```
 
 | Variable | Default | Description |
@@ -216,7 +216,7 @@ cli-anything-zotero item similar ITEM_KEY
 
 ```bash
 export OPENAI_API_KEY=sk-...
-cli-anything-zotero item analyze ITEM_KEY --question "What are the main findings?"
+zotero-cli item analyze ITEM_KEY --question "What are the main findings?"
 ```
 
 ---

@@ -87,6 +87,11 @@
 
 ## Live E2E Plan
 
+When a local Zotero data directory exists, read-only E2E tests are expected to
+start Zotero if needed and require both the connector endpoint and Local API to
+be available. Missing HTTP readiness is a setup failure with diagnostics, not a
+silent skip. Write E2E tests remain opt-in.
+
 ### Non-Mutating
 
 - `app ping`
@@ -148,11 +153,11 @@ $env:CLI_ANYTHING_FORCE_INSTALLED=1
 py -m pytest cli_anything/zotero/tests/test_cli_entrypoint.py -v
 py -m pytest cli_anything/zotero/tests/test_full_e2e.py -v -s
 
-cli-anything-zotero --json app status
-cli-anything-zotero --json collection find "具身"
-cli-anything-zotero --json item find "embodied intelligence" --limit 5
-cli-anything-zotero --json item context PB98EI9N --include-links
-cli-anything-zotero --json note get <note-key>
+zotero-cli --json app status
+zotero-cli --json collection find "具身"
+zotero-cli --json item find "embodied intelligence" --limit 5
+zotero-cli --json item context PB98EI9N --include-links
+zotero-cli --json note get <note-key>
 ```
 
 ### Real Zotero Results
