@@ -174,11 +174,16 @@ Zotero must be running:
 zotero-cli --json item find "foundation model"
 zotero-cli --json item find "A Very Specific Paper Title" --exact-title
 zotero-cli --json item find "vision" --collection COLLAAAA --limit 10
+zotero-cli --json item find "tag or note text" --scope fields
+zotero-cli --json item find "full text phrase" --scope everything
 ```
 
 Behavior:
 
 - default mode prefers Local API search and falls back to SQLite title search when needed
+- `--scope titleCreatorYear` matches Zotero's default quick-search range: title, creator, and year
+- `--scope fields` searches Zotero fields, tags, notes, annotation text, and annotation comments
+- `--scope everything` expands to Zotero's full-content search
 - when Local API is used, the harness automatically switches between `/api/users/0/...` and `/api/groups/<libraryID>/...`
 - `--exact-title` forces exact title matching through SQLite
 - results include `itemID` and `key`, so you can pass them directly to `item get`

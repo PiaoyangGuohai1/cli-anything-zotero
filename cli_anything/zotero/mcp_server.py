@@ -159,18 +159,20 @@ def item_list(limit: int = 50) -> list[dict]:
     return catalog.list_items(_get_runtime(), session=_session(), limit=limit)
 
 
-@server.tool(description="Search for items by keyword across title, author, abstract, and tags.")
+@server.tool(description="Search for items by keyword with a Zotero quick-search scope.")
 def item_find(
     query: str,
     collection_ref: str | None = None,
     limit: int = 20,
     exact_title: bool = False,
+    search_scope: str = "titleCreatorYear",
 ) -> list[dict]:
     return catalog.find_items(
         _get_runtime(), query,
         collection_ref=collection_ref,
         limit=limit,
         exact_title=exact_title,
+        search_scope=search_scope,
         session=_session(),
     )
 

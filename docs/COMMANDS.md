@@ -24,7 +24,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 
 | Command | Description | Backend |
 |---------|-------------|---------|
-| `item find <query>` | Keyword search | SQLite |
+| `item find <query> [--scope titleCreatorYear\|fields\|everything]` | Keyword search with Zotero quick-search scope control | Local API + SQLite fallback |
 | `item list [--limit N]` | List recent items | SQLite |
 | `item get <ref>` | Full item details | SQLite |
 | `item children <ref>` | Child items (attachments, notes) | SQLite |

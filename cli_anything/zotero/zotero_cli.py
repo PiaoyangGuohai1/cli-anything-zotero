@@ -806,6 +806,14 @@ def item_list(ctx: click.Context, limit: int) -> int:
 @click.option("--collection", "collection_ref", default=None, help="Collection ID or key scope.")
 @click.option("--limit", default=20, show_default=True, type=int)
 @click.option("--exact-title", is_flag=True, help="Use exact title matching via SQLite.")
+@click.option(
+    "--scope",
+    "search_scope",
+    type=click.Choice(catalog.SEARCH_SCOPES),
+    default="titleCreatorYear",
+    show_default=True,
+    help="Zotero Local API quick-search scope.",
+)
 @click.pass_context
 def item_find_command(
     ctx: click.Context,
@@ -813,6 +821,7 @@ def item_find_command(
     collection_ref: str | None,
     limit: int,
     exact_title: bool,
+    search_scope: str,
 ) -> int:
     emit(
         ctx,
@@ -822,6 +831,7 @@ def item_find_command(
             collection_ref=collection_ref,
             limit=limit,
             exact_title=exact_title,
+            search_scope=search_scope,
             session=current_session(),
         ),
     )

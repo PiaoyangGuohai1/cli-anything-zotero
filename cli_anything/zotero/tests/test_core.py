@@ -1407,6 +1407,13 @@ class WorkflowCoreTests(unittest.TestCase):
         local_api.assert_called_once()
         self.assertEqual(items[0]["key"], "REG12345")
 
+    def test_item_find_passes_quick_search_scope_to_local_api(self):
+        with mock.patch.object(self.runtime, "local_api_available", True):
+            with mock.patch("cli_anything.zotero.utils.zotero_http.local_api_get_json", return_value=[{"key": "REG12345"}]) as local_api:
+                items = catalog.find_items(self.runtime, "tag value", limit=5, search_scope="fields", session={})
+        self.assertEqual(items[0]["key"], "REG12345")
+        self.assertEqual(local_api.call_args.kwargs["params"]["qmode"], "fields")
+
     def test_group_library_local_api_scope_and_search_routes(self):
         self.assertEqual(catalog.local_api_scope(self.runtime, 1), "/api/users/0")
         self.assertEqual(catalog.local_api_scope(self.runtime, 2), "/api/groups/2")

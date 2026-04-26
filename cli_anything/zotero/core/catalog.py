@@ -7,6 +7,8 @@ from typing import Any
 from cli_anything.zotero.core.discovery import RuntimeContext
 from cli_anything.zotero.utils import zotero_http, zotero_sqlite
 
+SEARCH_SCOPES = ("titleCreatorYear", "fields", "everything")
+
 
 def _require_sqlite(runtime: RuntimeContext) -> Path:
     sqlite_path = runtime.environment.sqlite_path
@@ -100,8 +102,12 @@ def find_items(
     collection_ref: str | None = None,
     limit: int = 20,
     exact_title: bool = False,
+    search_scope: str = "titleCreatorYear",
     session: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    if search_scope not in SEARCH_SCOPES:
+        raise ValueError(f"Unsupported item search scope: {search_scope}")
+
     sqlite_path = _require_sqlite(runtime)
     collection = None
     if collection_ref:
@@ -114,7 +120,7 @@ def find_items(
         payload = zotero_http.local_api_get_json(
             runtime.environment.port,
             path,
-            params={"format": "json", "q": query, "limit": limit},
+            params={"format": "json", "q": query, "qmode": search_scope, "limit": limit},
         )
         results: list[dict[str, Any]] = []
         for record in payload if isinstance(payload, list) else []:

@@ -156,6 +156,7 @@ zotero-cli import file ./refs.ris
 **读取与导出**
 ```bash
 zotero-cli item get ITEM_KEY
+zotero-cli item find "关键词" --scope fields
 zotero-cli item export ITEM_KEY --format bibtex
 zotero-cli export bib --items KEY1,KEY2 --output refs.bib
 zotero-cli item citation ITEM_KEY

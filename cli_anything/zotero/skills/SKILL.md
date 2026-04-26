@@ -34,6 +34,12 @@ If it reports an update, ask the user to run the upgrade command before proceedi
 # Keyword search
 zotero-cli item find "query" --limit 10
 
+# Search all Zotero fields, tags, notes, and annotations
+zotero-cli item find "query" --scope fields --limit 10
+
+# Search everything Zotero can search, including full content
+zotero-cli item find "query" --scope everything --limit 10
+
 # Full-text search inside PDFs
 zotero-cli item search-fulltext "query" --limit 10
 
@@ -265,4 +271,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-0.9.4
+0.9.5
