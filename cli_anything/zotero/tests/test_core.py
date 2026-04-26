@@ -606,6 +606,8 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertIn('"bibliography": {"mode": "auto"', bridge.code)
         self.assertIn('"itemID": 1', bridge.code)
         self.assertIn('"itemID": 5', bridge.code)
+        self.assertIn("currentDoc = false", bridge.code)
+        self.assertIn("currentCommandPromise = Promise.resolve()", bridge.code)
 
     def test_zoterify_document_writes_debug_artifacts_only_when_requested(self):
         class RecordingBridge:

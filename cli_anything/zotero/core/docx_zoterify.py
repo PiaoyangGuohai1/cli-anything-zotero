@@ -609,8 +609,24 @@ result.document_data_written = true;
 result.updated = true;
 result.converted = true;
 result.ready = true;
+try {{
+  if (session.progressBar) {{
+    session.progressBar.hide();
+  }}
+}} catch (_) {{}}
+Zotero.Integration.currentDoc = false;
+Zotero.Integration.currentWindow = false;
+Zotero.Integration.currentCommandPromise = Promise.resolve();
+result.integration_state_cleared = true;
 return result;
 }} catch (e) {{
+  try {{
+    if (Zotero.Integration) {{
+      Zotero.Integration.currentDoc = false;
+      Zotero.Integration.currentWindow = false;
+      Zotero.Integration.currentCommandPromise = Promise.resolve();
+    }}
+  }} catch (_) {{}}
   return {{
     ready: false,
     converted: false,
