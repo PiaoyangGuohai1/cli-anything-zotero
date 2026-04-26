@@ -42,7 +42,7 @@ Built on [CLI-Anything](https://github.com/HKUDS/CLI-Anything) by [HKUDS](https:
 - **PDF management** — attach files, auto-find PDFs online, search annotations
 - **Write operations** — update metadata, manage tags, add notes, trigger sync
 - **Advanced** — execute arbitrary Zotero JS, semantic search with local embeddings, AI analysis
-- **MCP server** — 52 tools for Claude Desktop, Cursor, LM Studio, and other MCP clients
+- **MCP server** — 56 tools for Claude Desktop, Cursor, LM Studio, and other MCP clients
 
 All write operations run locally through the JS Bridge — no API key or internet connection required.
 
@@ -56,7 +56,7 @@ This tool supports two modes. **Pick the one that fits your AI client:**
 |---|---|---|
 | **How AI calls it** | Shell commands (`zotero-cli item find ...`) | Structured tool calls (no command-line needed) |
 | **Works with** | Any AI that can run shell commands (Claude Code, ChatGPT, Cursor, Windsurf, Cline, etc.) | AI clients with MCP support (Claude Desktop, Cursor, Claude Code, LM Studio, etc.) |
-| **AI learning curve** | AI runs `--help` once to discover all 70+ commands | Zero — 52 tools are auto-registered with typed parameters |
+| **AI learning curve** | AI runs `--help` once to discover all 70+ commands | Zero — 56 tools are auto-registered with typed parameters |
 | **Error rate** | Occasional typos by AI (self-corrects) | Near-zero (parameters are type-constrained) |
 | **Install** | `pip install cli-anything-zotero` | `pip install 'cli-anything-zotero[mcp]'` + client config |
 
@@ -140,7 +140,7 @@ claude mcp add zotero --scope user -- zotero-mcp
 }
 ```
 
-After restarting your AI client, 52 Zotero tools will be available automatically.
+After restarting your AI client, 56 Zotero tools will be available automatically.
 
 Full MCP reference: **[docs/MCP.md](docs/MCP.md)**
 </details>
@@ -181,19 +181,25 @@ zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM-ready context
 zotero-cli docx inspect-citations draft.docx  # detect Zotero/EndNote/static citation fields
 zotero-cli docx validate-placeholders draft.docx
+zotero-cli docx render-citations draft.docx --output draft-static.docx --force
 zotero-cli docx doctor
 zotero-cli docx insert-citations draft.docx --output draft-zotero.docx --force
 ```
 
 For AI-authored DOCX workflows, use Zotero-bound placeholders such as
-`{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}`. The normal writing workflow
-has only two user-facing documents: the original placeholder DOCX and the final
-`insert-citations --output` DOCX. The command defaults to `--bibliography auto`,
-so it creates or updates a Zotero bibliography field as part of the same run.
-Dynamic DOCX citation insertion is an optional LibreOffice-backed workflow: it
-requires Zotero Desktop, LibreOffice, the Zotero LibreOffice Add-in, and the
-CLI Bridge plugin. Run `docx doctor` when setting up a machine or when an AI
-agent needs to decide whether the workflow is installed.
+`{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}`, then choose the final output
+mode:
+
+- Static citations: `docx render-citations` replaces placeholders with ordinary citation text and appends a static bibliography. It only needs Zotero's Local API, so it is the easiest path for lightweight reports or one-off documents. Static output cannot be refreshed by the Zotero word processor plugin.
+- Dynamic citations: `docx insert-citations` converts placeholders into real Zotero/LibreOffice fields and creates or updates a refreshable bibliography field. This is the better path for theses, manuscripts, and documents that will be edited or restyled later.
+
+AI agents should ask the user which mode they want when the request is
+ambiguous. If the user only wants a simple final DOCX and has not installed
+LibreOffice, prefer static citations. Dynamic DOCX citation insertion is an
+optional LibreOffice-backed workflow: it requires Zotero Desktop, LibreOffice,
+the Zotero LibreOffice Add-in, and the CLI Bridge plugin. Run `docx doctor`
+when setting up a machine or when an AI agent needs to decide whether the
+workflow is installed.
 
 Platform support for this optional workflow:
 - macOS: tested end-to-end with automatic open, conversion, save, and Word-compatible DOCX output.
@@ -325,7 +331,7 @@ There are several great tools in the Zotero ecosystem. Each has different streng
 | **Approach** | Local JS Bridge | Web API + MCP | Web API + CLI | Web API + CLI |
 | **Best for** | Local-first, full control | MCP-native workflows | Agent-driven research | Scripting & automation |
 | **Write ops** | Local (no API key) | Via Web API | Via Web API | Via Web API |
-| **MCP support** | 52 tools | Yes | 45 tools | No |
+| **MCP support** | 56 tools | Yes | 45 tools | No |
 | **Terminal CLI** | Yes | No | Yes | Yes |
 | **Zotero JS access** | Yes | No | No | No |
 | **License** | Apache 2.0 | MIT | CC BY-NC 4.0 | MIT |

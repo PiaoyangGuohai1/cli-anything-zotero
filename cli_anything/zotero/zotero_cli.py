@@ -10,7 +10,7 @@ from typing import Any
 import click
 
 from cli_anything.zotero import __version__
-from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_tools, docx_zoterify, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_tools, docx_static, docx_zoterify, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
 from cli_anything.zotero.utils import zotero_paths
 from cli_anything.zotero.utils.repl_skin import ReplSkin
 
@@ -1435,6 +1435,41 @@ def docx_insert_citations_command(
 ) -> int:
     """AI-friendly alias for converting Zotero placeholders into final citation fields."""
     return _run_docx_zoterify(ctx, path, output, backend, style, locale, field_type, bibliography, open_document, force, debug_dir)
+
+
+@docx.command("render-citations")
+@click.argument("path")
+@click.option("--output", required=True, type=click.Path(dir_okay=False, path_type=Path), help="Output .docx path.")
+@click.option("--style", default=docx_static.DEFAULT_STYLE, show_default=True, help="CSL style ID or short style name.")
+@click.option("--locale", default=docx_static.DEFAULT_LOCALE, show_default=True, help="CSL locale.")
+@click.option("--bibliography", type=click.Choice(["auto", "none"]), default=docx_static.DEFAULT_BIBLIOGRAPHY, show_default=True, help="Whether to append a static bibliography.")
+@click.option("--force", is_flag=True, help="Overwrite the output file if it already exists.")
+@click.pass_context
+def docx_render_citations_command(
+    ctx: click.Context,
+    path: str,
+    output: Path,
+    style: str,
+    locale: str,
+    bibliography: str,
+    force: bool,
+) -> int:
+    """Convert Zotero placeholders into static citation and bibliography text."""
+    try:
+        payload = docx_static.render_static_citations(
+            current_runtime(ctx),
+            path,
+            output,
+            style=style,
+            locale=locale,
+            bibliography=bibliography,
+            session=current_session(),
+            overwrite=force,
+        )
+    except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
 
 
 def _run_docx_zoterify(

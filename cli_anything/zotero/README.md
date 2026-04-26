@@ -432,6 +432,7 @@ Backend:
 | `inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text | No | DOCX XML |
 | `inspect-placeholders <file.docx>` | Detect AI Zotero placeholders like `{{zotero:ITEMKEY}}` | No | DOCX XML |
 | `validate-placeholders <file.docx>` | Verify placeholder item keys resolve to real local Zotero records | No | SQLite |
+| `render-citations <file.docx> --output out.docx [--bibliography auto]` | Convert placeholders into static citation and bibliography text | Yes | DOCX XML + SQLite + Zotero Local API |
 | `doctor [--backend libreoffice]` | Check optional dynamic DOCX citation requirements and upgrade steps | Diagnostic | local app checks + CLI Bridge |
 | `zoterify-preflight <file.docx>` | Check placeholders plus Java/LibreOffice/Zotero/plugin readiness | Diagnostic | SQLite + local app checks |
 | `zoterify-probe [--backend libreoffice]` | Probe CLI Bridge, Zotero integration, LibreOffice integration, and active document readiness | Yes | CLI Bridge + Zotero integration |

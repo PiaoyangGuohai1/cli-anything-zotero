@@ -90,6 +90,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `docx inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text in a DOCX |
 | `docx inspect-placeholders <file.docx>` | Detect AI-authored Zotero placeholders such as `{{zotero:ITEMKEY}}` |
 | `docx validate-placeholders <file.docx>` | Verify placeholder keys resolve to real local Zotero items |
+| `docx render-citations <file.docx> --output out.docx [--bibliography auto]` | Convert `{{zotero:KEY}}` placeholders into static citation text and a static bibliography |
 | `docx doctor [--backend libreoffice]` | Check optional dynamic DOCX citation requirements, dependency status, and upgrade steps |
 | `docx zoterify-preflight <file.docx>` | Check placeholder validity plus local Java/LibreOffice/Zotero/plugin readiness |
 | `docx zoterify-probe [--backend libreoffice]` | Probe CLI Bridge, Zotero integration, LibreOffice integration, and active document readiness |

@@ -106,12 +106,22 @@ zotero-cli --json docx inspect-citations manuscript.docx
 # AI-authored DOCX citations must use real Zotero placeholders, then validate them
 zotero-cli --json docx inspect-placeholders manuscript.docx
 zotero-cli --json docx validate-placeholders manuscript.docx
+
+# Static final DOCX: replace placeholders with ordinary text citations and bibliography
+zotero-cli --json docx render-citations manuscript.docx --output manuscript-static.docx --force
+
+# Dynamic final DOCX: use Zotero/LibreOffice fields when the user needs Refresh
+zotero-cli --json docx doctor
+zotero-cli --json docx insert-citations manuscript.docx --output manuscript-zotero.docx --force
 ```
 
 When drafting DOCX content with AI, never invent final static citations such as
 `(Author, 2024)` unless the user explicitly asks for static prose. Insert
 `{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}` placeholders from real Zotero
-items and validate the document before handoff.
+items and validate the document before handoff. When the user asks to insert
+citations without specifying a mode, ask whether they want static citations
+(`docx render-citations`, simplest) or dynamic Zotero fields
+(`docx insert-citations`, refreshable but requires LibreOffice).
 
 ### PDF Management
 

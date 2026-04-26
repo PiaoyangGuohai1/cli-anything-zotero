@@ -9,6 +9,7 @@ import sysconfig
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -78,7 +79,7 @@ class CliEntrypointTests(unittest.TestCase):
     def test_version_option_reports_package_version(self):
         result = self.run_cli(["--version"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("0.8.0", result.stdout)
+        self.assertIn("0.9.0", result.stdout)
 
     def test_dispatch_uses_requested_prog_name(self):
         result = dispatch(["--help"], prog_name="zotero-cli")
@@ -281,6 +282,39 @@ class CliEntrypointTests(unittest.TestCase):
         doctor = self.run_cli(["docx", "doctor", "--help"])
         self.assertEqual(doctor.returncode, 0, msg=doctor.stderr)
         self.assertIn("dynamic DOCX citation requirements", doctor.stdout)
+
+        render = self.run_cli(["docx", "render-citations", "--help"])
+        self.assertEqual(render.returncode, 0, msg=render.stderr)
+        self.assertIn("static citation", render.stdout)
+
+    def test_docx_render_citations_writes_static_docx(self):
+        docx_path = Path(self.tmpdir.name) / "ready.docx"
+        output_path = Path(self.tmpdir.name) / "static.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+        )
+        with fake_zotero_http_server(sqlite_path=self.env_paths["sqlite_path"], data_dir=self.env_paths["data_dir"]) as server:
+            result = self.run_cli(
+                [
+                    "--json",
+                    "docx",
+                    "render-citations",
+                    "--output",
+                    str(output_path),
+                    str(docx_path),
+                ],
+                extra_env={"ZOTERO_HTTP_PORT": str(server["port"])},
+            )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["mode"], "static")
+        self.assertEqual(payload["bibliography_count"], 1)
+        self.assertTrue(output_path.exists())
+        document_xml = zipfile.ZipFile(output_path).read("word/document.xml").decode("utf-8")
+        self.assertIn("REG12345 citation", document_xml)
 
     def test_export_bib_items_writes_output_file(self):
         output_path = Path(self.tmpdir.name) / "refs.bib"

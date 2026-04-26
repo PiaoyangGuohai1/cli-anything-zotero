@@ -1,6 +1,6 @@
 # MCP Server Reference
 
-cli-anything-zotero provides an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server with **52 tools**, giving AI clients full access to your local Zotero library.
+cli-anything-zotero provides an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server with **56 tools**, giving AI clients full access to your local Zotero library.
 
 ## Quick Start
 
@@ -104,13 +104,14 @@ Tool names follow the `group_action` pattern, matching the CLI structure (e.g. C
 | `item_metrics` | `item metrics` | Get NIH iCite citation metrics |
 | `item_analyze` | `item analyze` | AI analysis (requires `OPENAI_API_KEY`) |
 
-### docx (3 tools)
+### docx (4 tools)
 
 | Tool | CLI equivalent | Description |
 |------|----------------|-------------|
 | `docx_inspect_citations` | `docx inspect-citations` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text |
 | `docx_inspect_placeholders` | `docx inspect-placeholders` | Detect Zotero placeholders such as `{{zotero:ITEMKEY}}` |
 | `docx_validate_placeholders` | `docx validate-placeholders` | Verify placeholder keys resolve to real local Zotero items |
+| `docx_render_citations` | `docx render-citations` | Convert placeholders into static citation text and a static bibliography |
 
 ### note (2 tools)
 
@@ -164,6 +165,6 @@ Tool names follow the `group_action` pattern, matching the CLI structure (e.g. C
 | **Use when** | Terminal workflows, shell scripts, REPL exploration | AI clients (Claude Desktop, Cursor, LM Studio) |
 | **Interface** | `zotero-cli <command>` | Tools called by the AI client |
 | **Output** | Human-readable or `--json` | Structured for LLM consumption |
-| **Capabilities** | Same 52 operations | Same 52 operations |
+| **Capabilities** | Same 56 operations | Same 56 operations |
 
 Both use the same underlying core — the MCP server wraps the same functions the CLI calls.

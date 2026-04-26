@@ -243,17 +243,23 @@ def zoterify_document(
         open_result = _open_in_libreoffice(output_path) if open_document else {"attempted": False, "ok": None}
         if open_result.get("ok"):
             time.sleep(3)
-        bridge_result = bridge.execute_js_http_required(
-            _zoterify_js(
-                placeholders=working["placeholders"],
-                bibliography_placeholder=working["bibliography_placeholder"],
-                style=docx_tools._normalize_style_id(style),
-                locale=locale,
-                field_type=field_type,
-                bibliography=bibliography,
-            ),
-            wait_seconds=60,
+        zoterify_js = _zoterify_js(
+            placeholders=working["placeholders"],
+            bibliography_placeholder=working["bibliography_placeholder"],
+            style=docx_tools._normalize_style_id(style),
+            locale=locale,
+            field_type=field_type,
+            bibliography=bibliography,
         )
+        bridge_result = bridge.execute_js_http_required(zoterify_js, wait_seconds=60)
+        warmup_result = {"attempted": False, "ok": None}
+        if open_result.get("ok") and _needs_libreoffice_connection_warmup(bridge_result):
+            warmup_result = _warm_up_libreoffice_zotero_connection(output_path)
+            if debug_path is not None:
+                _write_debug_json(debug_path / "02-libreoffice-warmup.json", warmup_result)
+            if warmup_result.get("ok"):
+                time.sleep(1)
+                bridge_result = bridge.execute_js_http_required(zoterify_js, wait_seconds=60)
         if not bridge_result.get("ok"):
             raise RuntimeError(f"Zotero LibreOffice conversion failed: {bridge_result.get('error')}")
 
@@ -318,6 +324,7 @@ def zoterify_document(
         "save": save_result,
         "ready_for_user": ready_for_user,
         "open": open_result,
+        "libreoffice_warmup": warmup_result,
         "bridge": bridge_payload,
         "inspection": {
             "field_count": inspection["field_count"],
@@ -679,6 +686,85 @@ def _normalize_custom_properties_for_word(path: Path) -> None:
                 data = custom_xml
             output_zip.writestr(info, data)
     temp_path.replace(path)
+
+
+def _needs_libreoffice_connection_warmup(bridge_result: dict[str, Any]) -> bool:
+    """Detect Zotero's uninitialized LibreOffice socket listener failure."""
+    messages: list[str] = []
+    error = bridge_result.get("error")
+    if error:
+        messages.append(str(error))
+    data = bridge_result.get("data")
+    if isinstance(data, dict):
+        data_error = data.get("error")
+        if data_error:
+            messages.append(str(data_error))
+    text = "\n".join(messages)
+    return "_lastDataListener" in text or "beginTransaction" in text
+
+
+def _warm_up_libreoffice_zotero_connection(path: Path) -> dict[str, Any]:
+    """Click LibreOffice's Zotero Refresh button once to initialize the Zotero socket."""
+    if sys.platform != "darwin":
+        return {"attempted": False, "ok": None, "reason": "LibreOffice warmup is only implemented on macOS"}
+    target_name = json.dumps(path.name)
+    script = f'''
+on clickRefreshIn(uiElement)
+  try
+    if (role description of uiElement as string) is "button" and (name of uiElement as string) is "Refresh" then
+      click uiElement
+      return true
+    end if
+  end try
+  try
+    repeat with childElement in UI elements of uiElement
+      if my clickRefreshIn(childElement) then return true
+    end repeat
+  end try
+  return false
+end clickRefreshIn
+
+tell application "LibreOffice" to activate
+delay 0.5
+tell application "System Events"
+  set targetName to {target_name}
+  if not (exists process "soffice") then error "LibreOffice process was not found"
+  tell process "soffice"
+    set frontmost to true
+    set targetWindow to missing value
+    repeat with w in windows
+      try
+        if name of w contains targetName then
+          set targetWindow to w
+          perform action "AXRaise" of w
+          exit repeat
+        end if
+      end try
+    end repeat
+    if targetWindow is missing value then error "LibreOffice target document window was not found: " & targetName
+    if my clickRefreshIn(targetWindow) is false then error "LibreOffice Zotero Refresh button was not found"
+    delay 1.0
+    repeat with w in windows
+      try
+        if name of w is "Zotero Integration" and exists button "OK" of w then
+          click button "OK" of w
+          exit repeat
+        end if
+      end try
+    end repeat
+  end tell
+end tell
+'''
+    try:
+        completed = subprocess.run(["osascript"], input=script, capture_output=True, text=True, timeout=15, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"attempted": True, "ok": False, "error": str(exc)}
+    return {
+        "attempted": True,
+        "ok": completed.returncode == 0,
+        "method": "osascript zotero-refresh",
+        "stderr": completed.stderr.strip() or None,
+    }
 
 
 def _placeholder_preflight_capability() -> dict[str, Any]:

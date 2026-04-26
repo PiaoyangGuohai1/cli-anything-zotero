@@ -37,7 +37,7 @@
 |---|---|---|
 | **AI 怎么调用** | Shell 命令（`zotero-cli item find ...`） | 结构化工具调用（不需要命令行） |
 | **适配平台** | 任何能跑 shell 的 AI（Claude Code、ChatGPT、Cursor、Windsurf、Cline 等） | 支持 MCP 的 AI 客户端（Claude Desktop、Cursor、Claude Code、LM Studio 等） |
-| **AI 学习成本** | AI 运行一次 `--help` 即可学会全部 70+ 命令 | 零 — 52 个工具自动注册，参数有类型约束 |
+| **AI 学习成本** | AI 运行一次 `--help` 即可学会全部 70+ 命令 | 零 — 56 个工具自动注册，参数有类型约束 |
 | **出错率** | AI 偶尔拼错命令（会自动纠正） | 接近零（参数有类型约束） |
 | **安装** | `pip install cli-anything-zotero` | `pip install 'cli-anything-zotero[mcp]'` + 客户端配置 |
 
@@ -121,7 +121,7 @@ claude mcp add zotero --scope user -- zotero-mcp
 }
 ```
 
-重启 AI 客户端后，52 个 Zotero 工具将自动可用。
+重启 AI 客户端后，56 个 Zotero 工具将自动可用。
 
 完整 MCP 参考：**[MCP.md](MCP.md)**
 </details>
@@ -162,16 +162,18 @@ zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM 友好格式
 zotero-cli docx inspect-citations draft.docx  # 检测 Zotero/EndNote/静态引用字段
 zotero-cli docx validate-placeholders draft.docx
+zotero-cli docx render-citations draft.docx --output draft-static.docx --force
 zotero-cli docx doctor
 zotero-cli docx insert-citations draft.docx --output draft-zotero.docx --force
 ```
 
 AI 生成 DOCX 时，应插入 `{{zotero:ITEMKEY}}` 或
-`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符。日常写作流程只需要一条
-命令：`docx insert-citations draft.docx --output draft-zotero.docx --force`。
-用户可见的文件应该只有两个：原始占位符 DOCX 和最终 Zotero 字段 DOCX。
-这个命令默认使用 `--bibliography auto`，会在同一次运行里创建或更新 Zotero
-参考文献字段。
+`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符，最后再选择输出模式：
+
+- 静态引用：`docx render-citations` 会把占位符替换成普通文本引用，并在文末追加静态参考文献。它只需要 Zotero Local API，适合轻量报告、课程作业、一次性交付文档；缺点是不能用 Zotero Refresh。
+- 动态引用：`docx insert-citations` 会把占位符转换成真正的 Zotero/LibreOffice 字段，并创建或更新可刷新的参考文献字段。适合论文、毕业论文、正式稿件，以及后续还要修改格式的文档。
+
+当用户只说“帮我插入文献”而没有说明模式时，AI 应先询问要静态引用还是动态引用。如果用户只是要简单最终 DOCX，且没有安装 LibreOffice，优先推荐静态引用。
 动态 DOCX 引用插入是一个可选的 LibreOffice 后端工作流：用户还需要安装
 Zotero Desktop、LibreOffice、Zotero LibreOffice Add-in，以及 CLI Bridge
 插件。新机器或 AI 自动执行前，先跑 `docx doctor` 判断环境是否齐全。

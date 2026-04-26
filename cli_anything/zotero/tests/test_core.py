@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 from xml.etree import ElementTree as ET
 
-from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_mod, docx_zoterify, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_mod, docx_static, docx_zoterify, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.utils import openai_api, zotero_http, zotero_paths, zotero_sqlite
 
@@ -273,6 +273,39 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertEqual(report["missing_keys"], ["NOITEM99"])
         self.assertEqual(report["items"][0]["key"], "REG12345")
         self.assertEqual(report["items"][0]["title"], "Sample Title")
+
+    def test_render_static_citations_replaces_placeholders_and_appends_bibliography(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "static.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}} and pair {{zotero:REG12345,GROUPKEY}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            with fake_zotero_http_server(sqlite_path=env["sqlite_path"], data_dir=env["data_dir"]) as server:
+                runtime.environment.port = server["port"]
+                runtime.local_api_available = True
+                payload = docx_static.render_static_citations(runtime, source, output, session={}, overwrite=True)
+
+            document_xml = zipfile.ZipFile(output).read("word/document.xml").decode("utf-8")
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["mode"], "static")
+        self.assertEqual(payload["placeholder_count"], 2)
+        self.assertEqual(payload["bibliography_count"], 2)
+        self.assertEqual(payload["inspection"]["field_count"], 0)
+        self.assertIn("(REG12345 citation)", document_xml)
+        self.assertIn("(REG12345 citation; GROUPKEY citation)", document_xml)
+        self.assertIn("REG12345 bibliography", document_xml)
+        self.assertIn("GROUPKEY bibliography", document_xml)
+        self.assertNotIn("{{zotero:", document_xml)
 
     def test_zoterify_preflight_reports_ready_when_placeholders_are_valid(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -565,6 +598,78 @@ class DocxCitationInspectionTests(unittest.TestCase):
             self.assertTrue((debug_dir / "01-placeholder-map.json").exists())
             self.assertTrue((debug_dir / "02-bridge-result.json").exists())
             self.assertTrue((debug_dir / "03-inspect-citations.json").exists())
+
+    def test_zoterify_document_warms_up_libreoffice_connection_and_retries(self):
+        class WarmingBridge:
+            port = 23119
+
+            def __init__(self, output_path):
+                self.output_path = output_path
+                self.calls = 0
+
+            def bridge_endpoint_active(self):
+                return True
+
+            def execute_js_http_required(self, code, *, wait_seconds=3):
+                self.calls += 1
+                if self.calls == 1:
+                    return {
+                        "ok": True,
+                        "data": {
+                            "ready": False,
+                            "converted": False,
+                            "error": "can't access property \"beginTransaction\", _lastDataListener is undefined",
+                        },
+                        "error": None,
+                    }
+                write_docx_with_zotero_bookmark_fields(self.output_path, citation_count=1, bibliography_count=1)
+                return {
+                    "ok": True,
+                    "data": {
+                        "ready": True,
+                        "converted": True,
+                        "field_count": 2,
+                        "citation_field_count": 1,
+                        "bibliography_field_count": 1,
+                        "document_data_written": True,
+                        "updated": True,
+                    },
+                    "error": None,
+                }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "final.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            bridge = WarmingBridge(output)
+
+            with (
+                mock.patch.object(docx_zoterify, "_working_output_path", return_value=output),
+                mock.patch.object(docx_zoterify, "_open_in_libreoffice", return_value={"attempted": True, "ok": True}),
+                mock.patch.object(
+                    docx_zoterify,
+                    "_warm_up_libreoffice_zotero_connection",
+                    return_value={"attempted": True, "ok": True, "method": "test-refresh"},
+                ) as warmup,
+                mock.patch.object(docx_zoterify, "_save_active_libreoffice_document", return_value={"attempted": True, "ok": True}),
+            ):
+                payload = docx_zoterify.zoterify_document(runtime, bridge, source, output, open_document=True)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(bridge.calls, 2)
+        warmup.assert_called_once()
+        self.assertEqual(payload["libreoffice_warmup"]["method"], "test-refresh")
+        self.assertTrue(payload["has_zotero_fields"])
 
     def test_normalize_custom_properties_for_word_preserves_zotero_fields(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -17,7 +17,7 @@ except ImportError:
         "Install it with: pip install 'cli-anything-zotero[mcp]'"
     )
 
-from cli_anything.zotero.core import catalog, discovery, docx as docx_tools, jsbridge, notes, rendering, semantic, analysis, metrics
+from cli_anything.zotero.core import catalog, discovery, docx as docx_tools, docx_static, jsbridge, notes, rendering, semantic, analysis, metrics
 from cli_anything.zotero.core import session as session_mod
 
 # ---------------------------------------------------------------------------
@@ -233,6 +233,20 @@ def docx_inspect_placeholders(path: str, sample_limit: int = 10) -> dict:
 @server.tool(description="Validate DOCX Zotero placeholders against real local Zotero items.")
 def docx_validate_placeholders(path: str, sample_limit: int = 10) -> dict:
     return docx_tools.validate_placeholders(_get_runtime(), path, sample_limit=sample_limit, session=_session())
+
+
+@server.tool(description="Convert DOCX Zotero placeholders into static citation text and a static bibliography.")
+def docx_render_citations(path: str, output: str, style: str = "apa", locale: str = "en-US", bibliography: str = "auto", overwrite: bool = False) -> dict:
+    return docx_static.render_static_citations(
+        _get_runtime(),
+        path,
+        output,
+        style=style,
+        locale=locale,
+        bibliography=bibliography,
+        session=_session(),
+        overwrite=overwrite,
+    )
 
 
 @server.tool(description="Add or remove tags on an item.")
