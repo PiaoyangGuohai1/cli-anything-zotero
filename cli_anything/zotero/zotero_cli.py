@@ -10,7 +10,7 @@ from typing import Any
 import click
 
 from cli_anything.zotero import __version__
-from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_tools, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_tools, docx_zoterify, experimental, imports, jsbridge, metrics, notes, rendering, semantic, session as session_mod
 from cli_anything.zotero.utils import zotero_paths
 from cli_anything.zotero.utils.repl_skin import ReplSkin
 
@@ -337,6 +337,7 @@ def _import_exit_code(payload: dict[str, Any]) -> int:
 @click.option("--data-dir", default=None, help="Explicit Zotero data directory.")
 @click.option("--profile-dir", default=None, help="Explicit Zotero profile directory.")
 @click.option("--executable", default=None, help="Explicit Zotero executable path.")
+@click.version_option(__version__, prog_name="cli-anything-zotero")
 @click.pass_context
 def cli(ctx: click.Context, json_output: bool, backend: str, data_dir: str | None, profile_dir: str | None, executable: str | None) -> int:
     """Agent-native Zotero CLI using SQLite, connector, and Local API backends."""
@@ -458,7 +459,7 @@ def app_install_plugin(ctx: click.Context) -> int:
                 "action": "install_plugin",
                 "method": "automatic",
                 "plugin_path": str(xpi_path),
-                "message": "Plugin installed and activated. Restart Zotero to ensure it persists.",
+                "message": "Plugin installed. Restart Zotero so /cli-bridge/eval is active, then run: zotero-cli app plugin-status.",
             })
             return 0
 
@@ -470,7 +471,8 @@ def app_install_plugin(ctx: click.Context) -> int:
         "message": (
             "Plugin .xpi created. Install manually in Zotero: "
             "Tools > Add-ons > gear icon > Install Add-on From File, "
-            f"then select: {xpi_path}"
+            f"then select: {xpi_path}. Restart Zotero so /cli-bridge/eval is active, "
+            "then run: zotero-cli app plugin-status."
         ),
     })
     return 0
@@ -482,12 +484,44 @@ def app_plugin_status(ctx: click.Context) -> int:
     """Check if the CLI Bridge plugin is installed and the endpoint is active."""
     runtime = current_runtime(ctx)
     profile_dir = runtime.environment.profile_dir
+    xpi_path = zotero_paths.plugin_xpi_path(profile_dir)
     installed = zotero_paths.plugin_installed(profile_dir)
+    installed_version = zotero_paths.installed_plugin_version(profile_dir)
+    bundled_version = zotero_paths.bundled_plugin_version()
+    update_available = bool(installed_version and bundled_version and installed_version != bundled_version)
     active = current_bridge(ctx).bridge_endpoint_active()
+    js_result = None
+    js_ok = False
+    js_error = None
+    if active:
+        result = current_bridge(ctx).execute_js_http_required("return {ok: true, value: 'cli-bridge-ok'};", wait_seconds=5)
+        js_ok = bool(result.get("ok") and isinstance(result.get("data"), dict) and result["data"].get("value") == "cli-bridge-ok")
+        js_result = result.get("data")
+        js_error = result.get("error")
+    next_step = "CLI Bridge is ready."
+    if not installed:
+        next_step = "Run: zotero-cli app install-plugin, restart Zotero, then rerun this command."
+    elif update_available:
+        next_step = "Run: zotero-cli app install-plugin, restart Zotero, then rerun this command."
+    elif not active:
+        next_step = "Restart Zotero. If the endpoint is still inactive, reinstall with: zotero-cli app install-plugin"
+    elif not js_ok:
+        next_step = "The endpoint responded, but eval did not return the expected value. Restart Zotero and rerun this command."
     emit(ctx, {
+        "plugin": {
+            "xpi_installed": installed,
+            "xpi_path": str(xpi_path) if xpi_path else None,
+            "profile_dir": str(profile_dir) if profile_dir else None,
+            "installed_version": installed_version,
+            "bundled_version": bundled_version,
+            "update_available": update_available,
+        },
+        "bridge": {"endpoint_active": active, "js_ok": js_ok, "js_result": js_result, "js_error": js_error},
         "plugin_installed": installed,
         "endpoint_active": active,
         "profile_dir": str(profile_dir) if profile_dir else None,
+        "ready": bool(installed and not update_available and active and js_ok),
+        "next_step": next_step,
     })
     return 0
 
@@ -1248,6 +1282,191 @@ def docx_validate_placeholders(ctx: click.Context, path: str, sample_limit: int)
     try:
         payload = docx_tools.validate_placeholders(current_runtime(ctx), path, sample_limit=sample_limit, session=current_session())
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@docx.command("zoterify-preflight")
+@click.argument("path")
+@click.option("--sample-limit", default=10, show_default=True, type=int, help="Maximum placeholder samples to include.")
+@click.option("--skip-external-checks", is_flag=True, help="Only validate DOCX placeholders and local Zotero item resolution.")
+@click.pass_context
+def docx_zoterify_preflight(ctx: click.Context, path: str, sample_limit: int, skip_external_checks: bool) -> int:
+    """Check whether a placeholder DOCX is ready for Zotero/LibreOffice conversion."""
+    try:
+        payload = docx_tools.zoterify_preflight(
+            current_runtime(ctx),
+            path,
+            sample_limit=sample_limit,
+            session=current_session(),
+            check_external=not skip_external_checks,
+        )
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@docx.command("prepare-zotero-import")
+@click.argument("path")
+@click.option("--output", required=True, type=click.Path(dir_okay=False, path_type=Path), help="Output transfer .docx path.")
+@click.option("--style", default="http://www.zotero.org/styles/apa", show_default=True, help="CSL style ID for the Zotero document preferences.")
+@click.option("--locale", default="en-US", show_default=True, help="CSL locale for the Zotero document preferences.")
+@click.option("--sample-limit", default=10, show_default=True, type=int, help="Maximum placeholder samples to include in validation.")
+@click.option("--skip-external-checks", is_flag=True, help="Only validate DOCX placeholders and local Zotero item resolution.")
+@click.option("--force", is_flag=True, help="Overwrite the output file if it already exists.")
+@click.option("--experimental", is_flag=True, help="Enable the unstable Zotero transfer-DOCX experiment.")
+@click.pass_context
+def docx_prepare_zotero_import(
+    ctx: click.Context,
+    path: str,
+    output: Path,
+    style: str,
+    locale: str,
+    sample_limit: int,
+    skip_external_checks: bool,
+    force: bool,
+    experimental: bool,
+) -> int:
+    """Create an experimental Zotero transfer DOCX from {{zotero:ITEMKEY}} placeholders."""
+    if not experimental:
+        raise click.ClickException(
+            "prepare-zotero-import is experimental and has failed in Zotero 9 + LibreOffice testing. "
+            "Pass --experimental only when debugging the transfer-DOCX path."
+        )
+    try:
+        payload = docx_tools.prepare_zotero_import_document(
+            current_runtime(ctx),
+            path,
+            output,
+            style=style,
+            locale=locale,
+            sample_limit=sample_limit,
+            session=current_session(),
+            check_external=not skip_external_checks,
+            overwrite=force,
+        )
+    except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@docx.command("zoterify-probe")
+@click.option("--backend", default=docx_zoterify.DEFAULT_BACKEND, show_default=True, help="Word processor backend.")
+@click.pass_context
+def docx_zoterify_probe(ctx: click.Context, backend: str) -> int:
+    """Probe whether Zotero and LibreOffice are ready for DOCX zoterify."""
+    try:
+        payload = docx_zoterify.zoterify_probe(current_bridge(ctx), backend=backend)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@docx.command("doctor")
+@click.option("--backend", default=docx_zoterify.DEFAULT_BACKEND, show_default=True, help="Word processor backend.")
+@click.pass_context
+def docx_doctor(ctx: click.Context, backend: str) -> int:
+    """Check optional LibreOffice-backed dynamic DOCX citation requirements."""
+    try:
+        payload = docx_zoterify.zoterify_doctor(current_runtime(ctx), current_bridge(ctx), backend=backend)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    emit(ctx, payload)
+    return 0
+
+
+@docx.command("zoterify")
+@click.argument("path")
+@click.option("--output", required=True, type=click.Path(dir_okay=False, path_type=Path), help="Output .docx path.")
+@click.option("--backend", default=docx_zoterify.DEFAULT_BACKEND, show_default=True, help="Word processor backend.")
+@click.option("--style", default=docx_zoterify.DEFAULT_STYLE, show_default=True, help="CSL style ID or short style name.")
+@click.option("--locale", default=docx_zoterify.DEFAULT_LOCALE, show_default=True, help="CSL locale.")
+@click.option("--field-type", default=docx_zoterify.DEFAULT_FIELD_TYPE, show_default=True, help="LibreOffice field type.")
+@click.option("--bibliography", type=click.Choice(["auto", "none"]), default=docx_zoterify.DEFAULT_BIBLIOGRAPHY, show_default=True, help="Whether to create/update a Zotero bibliography field.")
+@click.option("--open/--no-open", "open_document", default=True, show_default=True, help="Attempt to open the output DOCX in LibreOffice before conversion.")
+@click.option("--force", is_flag=True, help="Overwrite the output file if it already exists.")
+@click.option("--debug-dir", type=click.Path(file_okay=False, path_type=Path), help="Optional directory for zoterify debug JSON artifacts.")
+@click.pass_context
+def docx_zoterify_command(
+    ctx: click.Context,
+    path: str,
+    output: Path,
+    backend: str,
+    style: str,
+    locale: str,
+    field_type: str,
+    bibliography: str,
+    open_document: bool,
+    force: bool,
+    debug_dir: Path | None,
+) -> int:
+    """Convert {{zotero:ITEMKEY}} placeholders into Zotero LibreOffice fields."""
+    return _run_docx_zoterify(ctx, path, output, backend, style, locale, field_type, bibliography, open_document, force, debug_dir)
+
+
+@docx.command("insert-citations")
+@click.argument("path")
+@click.option("--output", required=True, type=click.Path(dir_okay=False, path_type=Path), help="Output .docx path.")
+@click.option("--backend", default=docx_zoterify.DEFAULT_BACKEND, show_default=True, help="Word processor backend.")
+@click.option("--style", default=docx_zoterify.DEFAULT_STYLE, show_default=True, help="CSL style ID or short style name.")
+@click.option("--locale", default=docx_zoterify.DEFAULT_LOCALE, show_default=True, help="CSL locale.")
+@click.option("--field-type", default=docx_zoterify.DEFAULT_FIELD_TYPE, show_default=True, help="LibreOffice field type.")
+@click.option("--bibliography", type=click.Choice(["auto", "none"]), default=docx_zoterify.DEFAULT_BIBLIOGRAPHY, show_default=True, help="Whether to create/update a Zotero bibliography field.")
+@click.option("--open/--no-open", "open_document", default=True, show_default=True, help="Attempt to open the output DOCX in LibreOffice before conversion.")
+@click.option("--force", is_flag=True, help="Overwrite the output file if it already exists.")
+@click.option("--debug-dir", type=click.Path(file_okay=False, path_type=Path), help="Optional directory for zoterify debug JSON artifacts.")
+@click.pass_context
+def docx_insert_citations_command(
+    ctx: click.Context,
+    path: str,
+    output: Path,
+    backend: str,
+    style: str,
+    locale: str,
+    field_type: str,
+    bibliography: str,
+    open_document: bool,
+    force: bool,
+    debug_dir: Path | None,
+) -> int:
+    """AI-friendly alias for converting Zotero placeholders into final citation fields."""
+    return _run_docx_zoterify(ctx, path, output, backend, style, locale, field_type, bibliography, open_document, force, debug_dir)
+
+
+def _run_docx_zoterify(
+    ctx: click.Context,
+    path: str,
+    output: Path,
+    backend: str,
+    style: str,
+    locale: str,
+    field_type: str,
+    bibliography: str,
+    open_document: bool,
+    force: bool,
+    debug_dir: Path | None,
+) -> int:
+    try:
+        payload = docx_zoterify.zoterify_document(
+            current_runtime(ctx),
+            current_bridge(ctx),
+            path,
+            output,
+            backend=backend,
+            style=style,
+            locale=locale,
+            field_type=field_type,
+            bibliography=bibliography,
+            session=current_session(),
+            open_document=open_document,
+            overwrite=force,
+            debug_dir=debug_dir,
+        )
+    except (FileNotFoundError, FileExistsError, ValueError, RuntimeError) as exc:
         raise click.ClickException(str(exc)) from exc
     emit(ctx, payload)
     return 0

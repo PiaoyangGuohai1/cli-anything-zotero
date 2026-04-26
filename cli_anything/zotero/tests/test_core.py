@@ -7,8 +7,9 @@ import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
+from xml.etree import ElementTree as ET
 
-from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_mod, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
+from cli_anything.zotero.core import analysis, catalog, discovery, docx as docx_mod, docx_zoterify, experimental, imports as imports_mod, jsbridge, notes as notes_mod, rendering, session as session_mod
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.utils import openai_api, zotero_http, zotero_paths, zotero_sqlite
 
@@ -23,6 +24,63 @@ def write_docx_with_document_xml(path: Path, body_xml: str) -> None:
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
         zf.writestr("word/document.xml", document_xml)
+
+
+def write_docx_with_zotero_bookmark_fields(path: Path, *, citation_count: int = 1, bibliography_count: int = 1) -> None:
+    paragraphs: list[str] = []
+    custom_props: list[str] = []
+    pid = 2
+    for idx in range(citation_count):
+        bookmark = f"ZOTERO_BREF_cite{idx}"
+        paragraphs.append(
+            f"""
+            <w:p>
+              <w:r><w:t>Claim </w:t></w:r>
+              <w:bookmarkStart w:id="{idx}" w:name="{bookmark}"/>
+              <w:r><w:t>(Ritchie et al., 2015)</w:t></w:r>
+              <w:bookmarkEnd w:id="{idx}"/>
+            </w:p>
+            """
+        )
+        custom_props.append(
+            f"""
+            <property fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="{pid}" name="{bookmark}_1">
+              <vt:lpwstr>ZOTERO_ITEM CSL_CITATION {{&quot;citationItems&quot;:[{{&quot;id&quot;:1}}]}}</vt:lpwstr>
+            </property>
+            """
+        )
+        pid += 1
+    for idx in range(bibliography_count):
+        bookmark = f"ZOTERO_BREF_bibl{idx}"
+        paragraphs.append(
+            f"""
+            <w:p>
+              <w:bookmarkStart w:id="{citation_count + idx}" w:name="{bookmark}"/>
+              <w:r><w:t>Ritchie, M. E. (2015). Test title.</w:t></w:r>
+              <w:bookmarkEnd w:id="{citation_count + idx}"/>
+            </w:p>
+            """
+        )
+        custom_props.append(
+            f"""
+            <property fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="{pid}" name="{bookmark}_1">
+              <vt:lpwstr>ZOTERO_BIBL {{&quot;uncited&quot;:[],&quot;omitted&quot;:[],&quot;custom&quot;:[]}} CSL_BIBLIOGRAPHY</vt:lpwstr>
+            </property>
+            """
+        )
+        pid += 1
+
+    write_docx_with_document_xml(path, "".join(paragraphs))
+    with zipfile.ZipFile(path, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "docProps/custom.xml",
+            (
+                '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
+                'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+                + "".join(custom_props)
+                + "</Properties>"
+            ),
+        )
 
 
 class PathDiscoveryTests(unittest.TestCase):
@@ -76,9 +134,13 @@ class PathDiscoveryTests(unittest.TestCase):
             with zipfile.ZipFile(xpi_path) as zf:
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
-        zotero_app = manifest["applications"]["zotero"]
-        self.assertEqual(zotero_app["strict_min_version"], "6.999")
-        self.assertEqual(zotero_app["strict_max_version"], "9.0.*")
+            zotero_app = manifest["applications"]["zotero"]
+            self.assertEqual(manifest["version"], "1.1.0")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.1.0")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.1.0")
+            self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
+            self.assertEqual(zotero_app["strict_min_version"], "6.999")
+            self.assertEqual(zotero_app["strict_max_version"], "9.0.*")
 
     def test_find_executable_returns_none_when_unresolved(self):
         with mock.patch.dict("os.environ", {}, clear=True):
@@ -130,6 +192,44 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertEqual(report["field_counts"]["csl"], 1)
         self.assertEqual(report["field_count"], 2)
 
+    def test_inspect_citations_detects_zotero_bookmark_fields_saved_by_libreoffice(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "zotero-bookmark.docx"
+            write_docx_with_document_xml(
+                path,
+                """
+                <w:p>
+                  <w:r><w:t>Claim </w:t></w:r>
+                  <w:bookmarkStart w:id="0" w:name="ZOTERO_BREF_abc123"/>
+                  <w:r><w:t>(Ritchie et al., 2015)</w:t></w:r>
+                  <w:bookmarkEnd w:id="0"/>
+                </w:p>
+                """,
+            )
+            with zipfile.ZipFile(path, "a", zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr(
+                    "docProps/custom.xml",
+                    """
+                    <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"
+                      xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
+                      <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="ZOTERO_BREF_abc123_2">
+                        <vt:lpwstr> {&quot;citationItems&quot;:[{&quot;id&quot;:3952}]}</vt:lpwstr>
+                      </property>
+                      <property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="3" name="ZOTERO_BREF_abc123_1">
+                        <vt:lpwstr>ZOTERO_ITEM CSL_CITATION</vt:lpwstr>
+                      </property>
+                    </Properties>
+                    """,
+                )
+
+            report = docx_mod.inspect_citations(path)
+
+        self.assertEqual(report["field_counts"]["zotero"], 1)
+        self.assertEqual(report["field_count"], 1)
+        self.assertEqual(report["fields"][0]["field_type"], "bookmark")
+        self.assertIn("ZOTERO_ITEM CSL_CITATION", report["fields"][0]["instruction"])
+        self.assertIn("static-text", report["systems"])
+
     def test_inspect_placeholders_detects_zotero_keys(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "placeholders.docx"
@@ -173,6 +273,314 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertEqual(report["missing_keys"], ["NOITEM99"])
         self.assertEqual(report["items"][0]["key"], "REG12345")
         self.assertEqual(report["items"][0]["title"], "Sample Title")
+
+    def test_zoterify_preflight_reports_ready_when_placeholders_are_valid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            path = Path(tmpdir) / "ready.docx"
+            write_docx_with_document_xml(
+                path,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}} and group {{zotero:GROUPKEY}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            report = docx_mod.zoterify_preflight(runtime, path, check_external=False)
+
+        self.assertTrue(report["ok"])
+        self.assertTrue(report["ready"])
+        self.assertEqual(report["checks"]["placeholders"]["citation_count"], 2)
+        self.assertEqual(report["checks"]["placeholders"]["missing_keys"], [])
+        self.assertTrue(report["checks"]["external"]["skipped"])
+
+    def test_zoterify_preflight_blocks_missing_zotero_items(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            path = Path(tmpdir) / "missing.docx"
+            write_docx_with_document_xml(
+                path,
+                '<w:p><w:r><w:t>Missing {{zotero:NOITEM99}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            report = docx_mod.zoterify_preflight(runtime, path, check_external=False)
+
+        self.assertFalse(report["ok"])
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["checks"]["placeholders"]["missing_keys"], ["NOITEM99"])
+        self.assertTrue(any("resolve to local Zotero items" in note for note in report["notes"]))
+
+    def test_prepare_zotero_import_document_writes_transfer_markers(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "transfer.docx"
+            write_docx_with_document_xml(
+                source,
+                (
+                    '<w:p><w:r><w:t>Known {{zotero:REG12345}} and group {{zotero:GROUPKEY}}.</w:t></w:r></w:p>'
+                    '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>'
+                ),
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            report = docx_mod.prepare_zotero_import_document(runtime, source, output, check_external=False)
+
+            document_xml = zipfile.ZipFile(output).read("word/document.xml").decode("utf-8")
+            rels_xml = zipfile.ZipFile(output).read("word/_rels/document.xml.rels").decode("utf-8")
+            placeholder_count = docx_mod.inspect_placeholders(output)["placeholder_count"]
+            root = ET.fromstring(document_xml)
+            body_children = list(root.find("w:body", {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}))
+
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["citation_count"], 2)
+        self.assertIn("ZOTERO_TRANSFER_DOCUMENT", document_xml)
+        self.assertIn("ITEM CSL_CITATION", document_xml)
+        self.assertIn("DOCUMENT_PREFERENCES", document_xml)
+        self.assertIn("http://www.zotero.org/styles/apa", document_xml)
+        self.assertIn("https://www.zotero.org/", rels_xml)
+        self.assertNotIn("ns0:Relationships", rels_xml)
+        self.assertEqual(placeholder_count, 0)
+        self.assertIn("sectPr", body_children[-1].tag)
+        self.assertNotIn("sectPr", body_children[-2].tag)
+        self.assertEqual("ZOTERO_TRANSFER_DOCUMENT", "".join(body_children[0].itertext()))
+        self.assertIn("DOCUMENT_PREFERENCES", "".join(body_children[1].itertext()))
+        self.assertNotIn("ITEM CSL_CITATION", "".join(body_children[1].itertext()))
+
+    def test_prepare_zotero_import_document_normalizes_short_style_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "transfer.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            report = docx_mod.prepare_zotero_import_document(runtime, source, output, style="apa", check_external=False)
+            document_xml = zipfile.ZipFile(output).read("word/document.xml").decode("utf-8")
+
+        self.assertEqual(report["style"], "http://www.zotero.org/styles/apa")
+        self.assertIn('style id="http://www.zotero.org/styles/apa"', document_xml)
+        self.assertIn('&lt;pref name="fieldType" value="ReferenceMark"', document_xml)
+        self.assertNotIn('name="noteType"', document_xml)
+
+    def test_build_zoterify_working_docx_replaces_placeholders_with_note_links(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "working.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}} and pair {{zotero:REG12345,GROUPKEY}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            payload = docx_zoterify.build_working_docx(runtime, source, output, session={})
+            document_xml = zipfile.ZipFile(output).read("word/document.xml").decode("utf-8")
+            rels_xml = zipfile.ZipFile(output).read("word/_rels/document.xml.rels").decode("utf-8")
+
+        self.assertEqual(payload["placeholder_count"], 2)
+        self.assertEqual([entry["keys"] for entry in payload["placeholders"]], [["REG12345"], ["REG12345", "GROUPKEY"]])
+        self.assertIn("https://www.zotero.org/?", rels_xml)
+        self.assertIn("ZOTERO_CLI_PLACEHOLDER_", document_xml)
+        self.assertNotIn("{{zotero:", document_xml)
+
+    def test_zoterify_probe_reports_bridge_inactive_without_applescript_fallback(self):
+        class InactiveBridge:
+            port = 23119
+
+            def bridge_endpoint_active(self):
+                return False
+
+        payload = docx_zoterify.zoterify_probe(InactiveBridge())
+
+        self.assertFalse(payload["ready"])
+        self.assertFalse(payload["bridge"]["active"])
+        self.assertIn("zotero-cli app install-plugin", payload["bridge"]["next_step"])
+
+    def test_zoterify_doctor_reports_optional_workflow_requirements(self):
+        class InactiveBridge:
+            port = 23119
+
+            def bridge_endpoint_active(self):
+                return False
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            payload = docx_zoterify.zoterify_doctor(runtime, InactiveBridge())
+
+        self.assertFalse(payload["installation_ready"])
+        self.assertEqual(payload["workflow"], "optional LibreOffice-backed dynamic DOCX citations")
+        self.assertIn("python -m pip install -U cli-anything-zotero", payload["upgrade_steps"])
+        self.assertIn("cli_bridge_plugin", payload["requirements"])
+        self.assertIn("libreoffice", payload["requirements"])
+        self.assertIn("zotero_libreoffice_integration", payload["requirements"])
+        self.assertIsNone(payload["probe"])
+
+    def test_zoterify_document_sends_structured_payload_to_bridge(self):
+        class RecordingBridge:
+            port = 23119
+
+            def __init__(self, output_path):
+                self.code = ""
+                self.output_path = output_path
+
+            def bridge_endpoint_active(self):
+                return True
+
+            def execute_js_http_required(self, code, *, wait_seconds=3):
+                self.code = code
+                write_docx_with_zotero_bookmark_fields(self.output_path, citation_count=2, bibliography_count=1)
+                return {
+                    "ok": True,
+                    "data": {
+                        "ready": True,
+                        "converted": True,
+                        "field_count": 2,
+                        "citation_field_count": 2,
+                        "bibliography_field_count": 1,
+                        "document_data_written": True,
+                        "updated": True,
+                    },
+                    "error": None,
+                }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "zotero.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}} and group {{zotero:GROUPKEY}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            bridge = RecordingBridge(output)
+
+            payload = docx_zoterify.zoterify_document(runtime, bridge, source, output, open_document=False)
+
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["ready_for_user"])
+        self.assertEqual(payload["backend"], "libreoffice")
+        self.assertEqual(payload["converted_placeholders"], 2)
+        self.assertEqual(payload["citation_fields"], 2)
+        self.assertEqual(payload["bibliography_fields"], 1)
+        self.assertTrue(payload["has_zotero_fields"])
+        self.assertFalse(payload["saved"])
+        self.assertEqual(payload["bibliography"], "auto")
+        self.assertEqual(payload["bridge"]["field_count"], 2)
+        self.assertIn("convertPlaceholdersToFields", bridge.code)
+        self.assertIn('"fieldType": "Bookmark"', bridge.code)
+        self.assertIn('"bibliography": {"mode": "auto"', bridge.code)
+        self.assertIn('"itemID": 1', bridge.code)
+        self.assertIn('"itemID": 5', bridge.code)
+
+    def test_zoterify_document_writes_debug_artifacts_only_when_requested(self):
+        class RecordingBridge:
+            port = 23119
+
+            def __init__(self, output_path):
+                self.output_path = output_path
+
+            def bridge_endpoint_active(self):
+                return True
+
+            def execute_js_http_required(self, code, *, wait_seconds=3):
+                write_docx_with_zotero_bookmark_fields(self.output_path, citation_count=1, bibliography_count=1)
+                return {
+                    "ok": True,
+                    "data": {
+                        "ready": True,
+                        "converted": True,
+                        "field_count": 1,
+                        "document_data_written": True,
+                        "updated": True,
+                    },
+                    "error": None,
+                }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "final.docx"
+            debug_dir = Path(tmpdir) / "debug"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+
+            payload = docx_zoterify.zoterify_document(
+                runtime,
+                RecordingBridge(output),
+                source,
+                output,
+                open_document=False,
+                debug_dir=debug_dir,
+            )
+
+            self.assertEqual(payload["artifacts"]["output"], str(output))
+            self.assertEqual(payload["artifacts"]["debug_dir"], str(debug_dir))
+            self.assertTrue((debug_dir / "01-placeholder-map.json").exists())
+            self.assertTrue((debug_dir / "02-bridge-result.json").exists())
+            self.assertTrue((debug_dir / "03-inspect-citations.json").exists())
+
+    def test_normalize_custom_properties_for_word_preserves_zotero_fields(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "zotero.docx"
+            write_docx_with_zotero_bookmark_fields(path, citation_count=1, bibliography_count=1)
+            before = zipfile.ZipFile(path).read("docProps/custom.xml").decode("utf-8")
+
+            docx_zoterify._normalize_custom_properties_for_word(path)
+
+            after = zipfile.ZipFile(path).read("docProps/custom.xml").decode("utf-8")
+            report = docx_mod.inspect_citations(path)
+
+        self.assertIn("&quot;", before)
+        self.assertNotIn("&quot;", after)
+        self.assertEqual(report["field_counts"]["zotero"], 2)
+        self.assertTrue(any("CSL_BIBLIOGRAPHY" in field["instruction"] for field in report["fields"]))
 
 
 class SQLiteInspectionTests(unittest.TestCase):

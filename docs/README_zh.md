@@ -77,6 +77,17 @@ zotero-cli app install-plugin
 
 > 装好后以后升级都是自动的。
 
+已有旧版本的用户，如果要使用“占位符 -> 动态 DOCX 引用”能力，需要同时更新
+Python 包和 Zotero Bridge 插件：
+
+```bash
+python -m pip install -U cli-anything-zotero
+zotero-cli app install-plugin
+# 重启 Zotero
+zotero-cli app plugin-status
+zotero-cli docx doctor
+```
+
 ### 第三步：配置你的 AI 客户端
 
 <details>
@@ -151,12 +162,32 @@ zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM 友好格式
 zotero-cli docx inspect-citations draft.docx  # 检测 Zotero/EndNote/静态引用字段
 zotero-cli docx validate-placeholders draft.docx
+zotero-cli docx doctor
+zotero-cli docx insert-citations draft.docx --output draft-zotero.docx --force
 ```
 
 AI 生成 DOCX 时，应插入 `{{zotero:ITEMKEY}}` 或
-`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符，并在定稿前验证。
+`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符。日常写作流程只需要一条
+命令：`docx insert-citations draft.docx --output draft-zotero.docx --force`。
+用户可见的文件应该只有两个：原始占位符 DOCX 和最终 Zotero 字段 DOCX。
+这个命令默认使用 `--bibliography auto`，会在同一次运行里创建或更新 Zotero
+参考文献字段。
+动态 DOCX 引用插入是一个可选的 LibreOffice 后端工作流：用户还需要安装
+Zotero Desktop、LibreOffice、Zotero LibreOffice Add-in，以及 CLI Bridge
+插件。新机器或 AI 自动执行前，先跑 `docx doctor` 判断环境是否齐全。
+
+这个可选工作流的平台状态：
+- macOS：已经端到端验证，可自动打开、转换、保存，并生成 Word 可打开的 DOCX。
+- Windows/Linux：基础 CLI 可以使用，`docx doctor` 也可以检查依赖；但动态 DOCX 引用的 LibreOffice 自动打开/保存还需要真实 Windows/Linux 桌面环境验证。在平台自动化验证完成前，用户可能需要手动打开或保存 LibreOffice 文档。
+
+`validate-placeholders`、`zoterify-preflight`、`zoterify-probe` 是安装检查或
+出错排查命令，不是每天都要跑的正式流程。只有需要排查时，才给
+转换命令额外传 `--debug-dir <目录>`，让它保存 placeholder map、bridge 返回值
+和 inspect 结果。`docx prepare-zotero-import` 只保留为实验性调试命令；
+在 Zotero 9 + LibreOffice 测试中它不稳定，因此不作为正式写作流程推荐。
 `item citation` 和 `item bibliography` 只适合静态预览；它们不是 Word 或
-LibreOffice Zotero 插件可刷新的字段。
+LibreOffice Zotero 插件可刷新的字段。BIB 导出是独立导出功能，不接入 DOCX
+写作流程。
 
 **写入与管理**
 ```bash

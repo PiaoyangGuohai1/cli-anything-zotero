@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import configparser
+import json
 import os
 import re
 import shutil
@@ -296,17 +297,58 @@ def find_extensions_dir(profile_dir: Path) -> Path:
     return profile_dir / "extensions"
 
 
+def plugin_xpi_path(profile_dir: Path | None) -> Path | None:
+    """Return the expected installed CLI Bridge XPI path for a Zotero profile."""
+    if profile_dir is None:
+        return None
+    return find_extensions_dir(profile_dir) / f"{PLUGIN_ADDON_ID}.xpi"
+
+
 def plugin_installed(profile_dir: Path | None) -> bool:
     """Check whether the CLI Bridge plugin .xpi is installed in the profile."""
-    if profile_dir is None:
+    xpi = plugin_xpi_path(profile_dir)
+    if xpi is None:
         return False
-    xpi = find_extensions_dir(profile_dir) / f"{PLUGIN_ADDON_ID}.xpi"
     return xpi.is_file()
 
 
 def _plugin_source_dir() -> Path:
     """Locate the bundled plugin source files shipped with this package."""
     return Path(__file__).resolve().parent.parent / "plugin" / "zotero-cli-bridge"
+
+
+def bundled_plugin_version() -> str | None:
+    """Return the CLI Bridge version bundled with this Python package."""
+    manifest = _plugin_source_dir() / "manifest.json"
+    if not manifest.is_file():
+        return None
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    version = payload.get("version")
+    return str(version) if version else None
+
+
+def installed_plugin_version(profile_dir: Path | None) -> str | None:
+    """Return the installed CLI Bridge XPI manifest version, if readable."""
+    xpi = plugin_xpi_path(profile_dir)
+    if xpi is None or not xpi.is_file():
+        return None
+    try:
+        with zipfile.ZipFile(xpi) as zf:
+            payload = json.loads(zf.read("manifest.json").decode("utf-8"))
+    except (OSError, KeyError, zipfile.BadZipFile, json.JSONDecodeError):
+        return None
+    version = payload.get("version")
+    return str(version) if version else None
+
+
+def plugin_update_available(profile_dir: Path | None) -> bool:
+    """Return True when the installed CLI Bridge version differs from the bundled one."""
+    installed = installed_plugin_version(profile_dir)
+    bundled = bundled_plugin_version()
+    return bool(installed and bundled and installed != bundled)
 
 
 def install_plugin_xpi(profile_dir: Path) -> Path:

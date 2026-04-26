@@ -28,6 +28,9 @@ This harness is designed for practical daily Zotero workflows:
 - Python 3.10+
 - Zotero desktop installed
 - a local Zotero profile and data directory
+- Optional dynamic DOCX citations: LibreOffice, the Zotero LibreOffice Add-in,
+  and the CLI Bridge plugin. macOS is tested end-to-end; Windows/Linux need
+  real desktop validation for fully automatic LibreOffice open/save.
 
 The Windows-first validation target for this harness is:
 
@@ -268,15 +271,26 @@ zotero-cli --json item bibliography REG12345 --style apa --locale en-US
 zotero-cli --json docx inspect-citations manuscript.docx
 zotero-cli --json docx inspect-placeholders manuscript.docx
 zotero-cli --json docx validate-placeholders manuscript.docx
+zotero-cli --json docx insert-citations manuscript.docx --output manuscript-zotero.docx --force
 ```
 
 These commands automatically use the correct Local API scope for user and group libraries.
 
 For AI-authored DOCX drafts, cite Zotero items by writing placeholders such as
-`{{zotero:REG12345}}` or `{{zotero:REG12345,GROUPKEY}}`, then run
-`docx validate-placeholders` before handoff. Static `item citation` and
-`item bibliography` output is useful for preview/export only; it is not a
-refreshable Zotero word-processor field.
+`{{zotero:REG12345}}` or `{{zotero:REG12345,GROUPKEY}}`. The supported daily
+writing flow is one command: `docx insert-citations manuscript.docx --output
+manuscript-zotero.docx --force`. That leaves only the original placeholder DOCX
+and the final Zotero-field DOCX as user-facing files. The command defaults to
+`--bibliography auto`, so the Zotero bibliography field is created or updated in
+the same run. `docx validate-placeholders`, `docx zoterify-preflight`, and
+`docx zoterify-probe` are diagnostics for setup or failure cases. Pass
+`--debug-dir <dir>` only when you want placeholder-map, bridge-result, and
+citation-inspection JSON artifacts.
+`docx prepare-zotero-import` is kept only as an experimental debugging command;
+it is not a supported Zotero 9 + LibreOffice writing workflow. Static `item
+citation` and `item bibliography` output is useful for preview/export only; it
+is not a refreshable Zotero word-processor field. BIB export remains independent
+and is not used for DOCX writing conversion.
 
 Supported export formats:
 
@@ -418,6 +432,12 @@ Backend:
 | `inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text | No | DOCX XML |
 | `inspect-placeholders <file.docx>` | Detect AI Zotero placeholders like `{{zotero:ITEMKEY}}` | No | DOCX XML |
 | `validate-placeholders <file.docx>` | Verify placeholder item keys resolve to real local Zotero records | No | SQLite |
+| `doctor [--backend libreoffice]` | Check optional dynamic DOCX citation requirements and upgrade steps | Diagnostic | local app checks + CLI Bridge |
+| `zoterify-preflight <file.docx>` | Check placeholders plus Java/LibreOffice/Zotero/plugin readiness | Diagnostic | SQLite + local app checks |
+| `zoterify-probe [--backend libreoffice]` | Probe CLI Bridge, Zotero integration, LibreOffice integration, and active document readiness | Yes | CLI Bridge + Zotero integration |
+| `insert-citations <file.docx> --output out.docx [--bibliography auto] [--debug-dir dir]` | AI-friendly command for converting placeholders into final Zotero citation and bibliography fields | Yes | DOCX XML + SQLite + CLI Bridge |
+| `zoterify <file.docx> --output out.docx --backend libreoffice [--bibliography auto] [--debug-dir dir]` | Lower-level alias for the same conversion; debug artifacts are opt-in | Yes | DOCX XML + SQLite + CLI Bridge |
+| `prepare-zotero-import <file.docx> --experimental --output transfer.docx` | Experimental transfer-DOCX debugger; not a supported writing workflow | Debug only | DOCX XML + SQLite |
 
 ### `export`
 

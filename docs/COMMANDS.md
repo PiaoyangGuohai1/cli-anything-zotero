@@ -90,6 +90,12 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `docx inspect-citations <file.docx>` | Detect Zotero, EndNote, CSL/Mendeley-like fields and static citation text in a DOCX |
 | `docx inspect-placeholders <file.docx>` | Detect AI-authored Zotero placeholders such as `{{zotero:ITEMKEY}}` |
 | `docx validate-placeholders <file.docx>` | Verify placeholder keys resolve to real local Zotero items |
+| `docx doctor [--backend libreoffice]` | Check optional dynamic DOCX citation requirements, dependency status, and upgrade steps |
+| `docx zoterify-preflight <file.docx>` | Check placeholder validity plus local Java/LibreOffice/Zotero/plugin readiness |
+| `docx zoterify-probe [--backend libreoffice]` | Probe CLI Bridge, Zotero integration, LibreOffice integration, and active document readiness |
+| `docx insert-citations <file.docx> --output out.docx [--bibliography auto] [--debug-dir dir]` | AI-friendly command for converting `{{zotero:KEY}}` placeholders into final Zotero citation and bibliography fields |
+| `docx zoterify <file.docx> --output out.docx --backend libreoffice [--bibliography auto] [--debug-dir dir]` | Lower-level alias for the same conversion; debug artifacts are opt-in |
+| `docx prepare-zotero-import <file.docx> --experimental --output transfer.docx` | Experimental only: create a Zotero transfer DOCX for debugging import behavior |
 | `export bib --items KEY1,KEY2 --output refs.bib` | Export selected Zotero items to a standalone BibTeX/BibLaTeX file |
 | `export bib --collection COLLKEY --output refs.bib` | Export top-level items in a collection to a standalone BibTeX/BibLaTeX file |
 | `sync` | Trigger Zotero sync |

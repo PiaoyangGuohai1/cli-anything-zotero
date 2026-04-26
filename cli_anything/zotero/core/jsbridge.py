@@ -261,6 +261,23 @@ class JSBridgeClient:
 
         return reg
 
+    def execute_js_http_required(self, code: str, *, wait_seconds: int = 3) -> dict:
+        """Execute JavaScript only through the installed HTTP bridge plugin.
+
+        DOCX zoterify uses this stricter path because GUI fallback cannot safely
+        drive Zotero's word-processor integration state.
+        """
+        if not self.bridge_endpoint_active():
+            return {
+                "ok": False,
+                "data": None,
+                "error": (
+                    "CLI Bridge endpoint is not active. Run: zotero-cli app install-plugin, "
+                    "restart Zotero, then verify with: zotero-cli app plugin-status"
+                ),
+            }
+        return _execute_http(code, port=self.port, timeout=max(wait_seconds, 10))
+
     # ── Item operations ───────────────────────────────────────────
 
     def attach_pdf(self, item_key: str, pdf_path: str, *, library_id: int = 1) -> dict:

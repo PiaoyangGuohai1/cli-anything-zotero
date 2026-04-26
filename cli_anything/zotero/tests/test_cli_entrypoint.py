@@ -75,6 +75,11 @@ class CliEntrypointTests(unittest.TestCase):
         self.assertIn("note", result.stdout)
         self.assertIn("session", result.stdout)
 
+    def test_version_option_reports_package_version(self):
+        result = self.run_cli(["--version"])
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("0.8.0", result.stdout)
+
     def test_dispatch_uses_requested_prog_name(self):
         result = dispatch(["--help"], prog_name="zotero-cli")
         self.assertEqual(result, 0)
@@ -178,6 +183,104 @@ class CliEntrypointTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["valid_count"], 1)
         self.assertEqual(payload["missing_keys"], ["NOITEM99"])
+
+    def test_docx_zoterify_preflight_can_skip_external_checks(self):
+        docx_path = Path(self.tmpdir.name) / "ready.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+        )
+
+        result = self.run_cli(["--json", "docx", "zoterify-preflight", "--skip-external-checks", str(docx_path)])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["ready"])
+        self.assertTrue(payload["checks"]["external"]["skipped"])
+        self.assertEqual(payload["checks"]["placeholders"]["citation_count"], 1)
+
+    def test_docx_prepare_zotero_import_writes_output_file(self):
+        docx_path = Path(self.tmpdir.name) / "ready.docx"
+        output_path = Path(self.tmpdir.name) / "transfer.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+        )
+
+        result = self.run_cli(
+            [
+                "--json",
+                "docx",
+                "prepare-zotero-import",
+                "--experimental",
+                "--skip-external-checks",
+                "--output",
+                str(output_path),
+                str(docx_path),
+            ]
+        )
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["output"], str(output_path))
+        self.assertEqual(payload["citation_count"], 1)
+        self.assertTrue(output_path.exists())
+
+    def test_docx_zoterify_probe_reports_inactive_bridge(self):
+        result = self.run_cli(["--json", "docx", "zoterify-probe"])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertFalse(payload["ready"])
+        self.assertIn("bridge", payload)
+        self.assertFalse(payload["bridge"]["active"])
+        self.assertIn("install-plugin", payload["bridge"]["next_step"])
+
+    def test_docx_doctor_reports_optional_requirements(self):
+        result = self.run_cli(["--json", "docx", "doctor"])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["workflow"], "optional LibreOffice-backed dynamic DOCX citations")
+        self.assertIn("requirements", payload)
+        self.assertIn("cli_bridge_plugin", payload["requirements"])
+        self.assertIn("libreoffice", payload["requirements"])
+        self.assertIn("zotero_libreoffice_integration", payload["requirements"])
+        self.assertIn("upgrade_steps", payload)
+
+    def test_docx_zoterify_fails_when_bridge_is_inactive(self):
+        docx_path = Path(self.tmpdir.name) / "ready.docx"
+        output_path = Path(self.tmpdir.name) / "zotero.docx"
+        write_docx_with_document_xml(
+            docx_path,
+            '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+        )
+
+        result = self.run_cli(
+            [
+                "--json",
+                "docx",
+                "zoterify",
+                "--output",
+                str(output_path),
+                "--no-open",
+                str(docx_path),
+            ]
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("CLI Bridge endpoint is not active", result.stdout)
+
+    def test_docx_insert_citations_alias_exists_for_ai_workflows(self):
+        result = self.run_cli(["docx", "insert-citations", "--help"])
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("--bibliography", result.stdout)
+        self.assertIn("--debug-dir", result.stdout)
+
+        doctor = self.run_cli(["docx", "doctor", "--help"])
+        self.assertEqual(doctor.returncode, 0, msg=doctor.stderr)
+        self.assertIn("dynamic DOCX citation requirements", doctor.stdout)
 
     def test_export_bib_items_writes_output_file(self):
         output_path = Path(self.tmpdir.name) / "refs.bib"

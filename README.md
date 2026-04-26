@@ -96,6 +96,17 @@ First install requires manual steps in Zotero:
 
 > After the first install, future upgrades via `app install-plugin` are automatic.
 
+For existing users upgrading to the dynamic DOCX citation workflow, update both
+the Python package and the Zotero bridge plugin:
+
+```bash
+python -m pip install -U cli-anything-zotero
+zotero-cli app install-plugin
+# restart Zotero
+zotero-cli app plugin-status
+zotero-cli docx doctor
+```
+
 ### Step 3: Set up your AI client
 
 <details>
@@ -170,12 +181,32 @@ zotero-cli item citation ITEM_KEY
 zotero-cli item context ITEM_KEY              # LLM-ready context
 zotero-cli docx inspect-citations draft.docx  # detect Zotero/EndNote/static citation fields
 zotero-cli docx validate-placeholders draft.docx
+zotero-cli docx doctor
+zotero-cli docx insert-citations draft.docx --output draft-zotero.docx --force
 ```
 
 For AI-authored DOCX workflows, use Zotero-bound placeholders such as
-`{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}` and validate them before
-finalizing. `item citation` and `item bibliography` render static previews;
-they are not refreshable Word/LibreOffice Zotero fields.
+`{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}`. The normal writing workflow
+has only two user-facing documents: the original placeholder DOCX and the final
+`insert-citations --output` DOCX. The command defaults to `--bibliography auto`,
+so it creates or updates a Zotero bibliography field as part of the same run.
+Dynamic DOCX citation insertion is an optional LibreOffice-backed workflow: it
+requires Zotero Desktop, LibreOffice, the Zotero LibreOffice Add-in, and the
+CLI Bridge plugin. Run `docx doctor` when setting up a machine or when an AI
+agent needs to decide whether the workflow is installed.
+
+Platform support for this optional workflow:
+- macOS: tested end-to-end with automatic open, conversion, save, and Word-compatible DOCX output.
+- Windows/Linux: the base CLI works, and `docx doctor` can report missing dependencies. Full automatic LibreOffice open/save for dynamic DOCX citations still needs real Windows/Linux desktop validation; users may need to open or save the LibreOffice document manually until platform automation is verified.
+
+`validate-placeholders`, `zoterify-preflight`, and `zoterify-probe` are
+diagnostics for setup or failure cases. Add `--debug-dir` only when you want
+JSON artifacts for troubleshooting.
+`docx prepare-zotero-import` exists only as an experimental debugging command;
+it is not a supported writing workflow after Zotero 9 + LibreOffice testing.
+`item citation` and `item bibliography` render static previews; they are not
+refreshable Word/LibreOffice Zotero fields. BIB export is a separate export
+feature and is not part of the DOCX writing workflow.
 
 **Write & Manage**
 ```bash
