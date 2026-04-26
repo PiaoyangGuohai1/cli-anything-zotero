@@ -709,21 +709,6 @@ def _warm_up_libreoffice_zotero_connection(path: Path) -> dict[str, Any]:
         return {"attempted": False, "ok": None, "reason": "LibreOffice warmup is only implemented on macOS"}
     target_name = json.dumps(path.name)
     script = f'''
-on clickRefreshIn(uiElement)
-  try
-    if (role description of uiElement as string) is "button" and (name of uiElement as string) is "Refresh" then
-      click uiElement
-      return true
-    end if
-  end try
-  try
-    repeat with childElement in UI elements of uiElement
-      if my clickRefreshIn(childElement) then return true
-    end repeat
-  end try
-  return false
-end clickRefreshIn
-
 tell application "LibreOffice" to activate
 delay 0.5
 tell application "System Events"
@@ -742,16 +727,31 @@ tell application "System Events"
       end try
     end repeat
     if targetWindow is missing value then error "LibreOffice target document window was not found: " & targetName
-    if my clickRefreshIn(targetWindow) is false then error "LibreOffice Zotero Refresh button was not found"
+    set clickedRefresh to false
+    try
+      click button "Refresh" of toolbar "Zotero" of group 6 of targetWindow
+      set clickedRefresh to true
+    end try
+    if clickedRefresh is false then
+      repeat with g in groups of targetWindow
+        try
+          if exists toolbar "Zotero" of g then
+            click button "Refresh" of toolbar "Zotero" of g
+            set clickedRefresh to true
+            exit repeat
+          end if
+        end try
+      end repeat
+    end if
+    if clickedRefresh is false then error "LibreOffice Zotero Refresh button was not found"
     delay 1.0
-    repeat with w in windows
-      try
-        if name of w is "Zotero Integration" and exists button "OK" of w then
-          click button "OK" of w
-          exit repeat
+    try
+      if exists window "Zotero Integration" then
+        if exists button "OK" of window "Zotero Integration" then
+          click button "OK" of window "Zotero Integration"
         end if
-      end try
-    end repeat
+      end if
+    end try
   end tell
 end tell
 '''
