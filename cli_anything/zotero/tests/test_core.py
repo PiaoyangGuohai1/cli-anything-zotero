@@ -307,6 +307,69 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertIn("GROUPKEY bibliography", document_xml)
         self.assertNotIn("{{zotero:", document_xml)
 
+    def test_render_static_citations_launches_zotero_for_local_api(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "static.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            runtime.local_api_available = False
+            with fake_zotero_http_server(sqlite_path=env["sqlite_path"], data_dir=env["data_dir"]) as server:
+                runtime.environment.port = server["port"]
+                with mock.patch(
+                    "cli_anything.zotero.core.discovery.launch_zotero",
+                    return_value={"connector_ready": True, "local_api_ready": True},
+                ) as launch:
+                    payload = docx_static.render_static_citations(runtime, source, output, session={}, overwrite=True)
+
+        launch.assert_called_once()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["zotero_startup"]["attempted"])
+        self.assertEqual(payload["inspection"]["field_count"], 0)
+
+    def test_render_static_citations_retries_transient_local_api_startup_errors(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "static.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            runtime.local_api_available = True
+
+            with (
+                mock.patch(
+                    "cli_anything.zotero.core.docx_static.rendering.citation_item",
+                    side_effect=[RuntimeError("Local API returned HTTP 500 for /api/users/0/items/REG12345"), {"citation": "(Retried, 2026)"}],
+                ) as citation,
+                mock.patch(
+                    "cli_anything.zotero.core.docx_static.rendering.bibliography_item",
+                    return_value={"bibliography": "Retried bibliography."},
+                ),
+                mock.patch("cli_anything.zotero.core.docx_static.time.sleep"),
+            ):
+                payload = docx_static.render_static_citations(runtime, source, output, session={}, overwrite=True)
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(citation.call_count, 2)
+        self.assertEqual(payload["rendered_placeholders"][0]["citation"], "(Retried, 2026)")
+
     def test_zoterify_preflight_reports_ready_when_placeholders_are_valid(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             env = create_sample_environment(Path(tmpdir))
@@ -671,6 +734,61 @@ class DocxCitationInspectionTests(unittest.TestCase):
         self.assertEqual(payload["libreoffice_warmup"]["method"], "test-refresh")
         self.assertTrue(payload["has_zotero_fields"])
 
+    def test_zoterify_document_launches_zotero_for_bridge_endpoint(self):
+        class DelayedBridge:
+            port = 23119
+
+            def __init__(self, output_path):
+                self.output_path = output_path
+                self.active_calls = 0
+
+            def bridge_endpoint_active(self):
+                self.active_calls += 1
+                return self.active_calls >= 2
+
+            def execute_js_http_required(self, code, *, wait_seconds=3):
+                write_docx_with_zotero_bookmark_fields(self.output_path, citation_count=1, bibliography_count=1)
+                return {
+                    "ok": True,
+                    "data": {
+                        "ready": True,
+                        "converted": True,
+                        "field_count": 2,
+                        "citation_field_count": 1,
+                        "bibliography_field_count": 1,
+                        "document_data_written": True,
+                        "updated": True,
+                    },
+                    "error": None,
+                }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            source = Path(tmpdir) / "source.docx"
+            output = Path(tmpdir) / "final.docx"
+            write_docx_with_document_xml(
+                source,
+                '<w:p><w:r><w:t>Known {{zotero:REG12345}}.</w:t></w:r></w:p>',
+            )
+            runtime = discovery.build_runtime_context(
+                backend="sqlite",
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            bridge = DelayedBridge(output)
+
+            with mock.patch(
+                "cli_anything.zotero.core.discovery.launch_zotero",
+                return_value={"connector_ready": True, "local_api_ready": False},
+            ) as launch:
+                payload = docx_zoterify.zoterify_document(runtime, bridge, source, output, open_document=False)
+
+        launch.assert_called_once()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["zotero_startup"]["attempted"])
+        self.assertTrue(payload["has_zotero_fields"])
+
     def test_normalize_custom_properties_for_word_preserves_zotero_fields(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "zotero.docx"
@@ -895,6 +1013,54 @@ class HttpUtilityTests(unittest.TestCase):
             self.assertEqual(wait.call_count, 2)
             self.assertTrue(payload["connector_ready"])
             self.assertTrue(payload["local_api_ready"])
+
+    def test_ensure_local_api_ready_launches_zotero_when_unavailable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            runtime = discovery.build_runtime_context(
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            runtime.local_api_available = False
+
+            with mock.patch(
+                "cli_anything.zotero.core.discovery.launch_zotero",
+                return_value={"connector_ready": True, "local_api_ready": True},
+            ) as launch:
+                payload = discovery.ensure_local_api_ready(runtime)
+
+        launch.assert_called_once()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(runtime.local_api_available)
+
+    def test_ensure_bridge_endpoint_ready_launches_zotero_and_waits_for_bridge(self):
+        class DelayedBridge:
+            def __init__(self):
+                self.calls = 0
+
+            def bridge_endpoint_active(self):
+                self.calls += 1
+                return self.calls >= 3
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            runtime = discovery.build_runtime_context(
+                data_dir=str(env["data_dir"]),
+                profile_dir=str(env["profile_dir"]),
+                executable=str(env["executable"]),
+            )
+            bridge = DelayedBridge()
+
+            with mock.patch(
+                "cli_anything.zotero.core.discovery.launch_zotero",
+                return_value={"connector_ready": True, "local_api_ready": False},
+            ) as launch:
+                payload = discovery.ensure_bridge_endpoint_ready(runtime, bridge, wait_timeout=1, poll_interval=0.01)
+
+        launch.assert_called_once()
+        self.assertTrue(payload["ok"])
+        self.assertTrue(payload["endpoint_active"])
 
 
 class ImportCoreTests(unittest.TestCase):

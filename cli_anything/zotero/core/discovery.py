@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -92,6 +93,71 @@ def launch_zotero(runtime: RuntimeContext, wait_timeout: int = 30) -> dict[str, 
         "local_api_ready": local_api_ready,
         "wait_timeout": wait_timeout,
         "executable": str(executable),
+    }
+
+
+def ensure_local_api_ready(runtime: RuntimeContext, *, wait_timeout: int = 30) -> dict[str, Any]:
+    """Launch Zotero when needed and wait for the Local API used by CSL rendering."""
+    if runtime.local_api_available:
+        return {"attempted": False, "ok": True, "local_api_ready": True, "reason": "local API already available"}
+    try:
+        launch = launch_zotero(runtime, wait_timeout=wait_timeout)
+    except (OSError, RuntimeError, FileNotFoundError) as exc:
+        return {
+            "attempted": True,
+            "ok": False,
+            "local_api_ready": False,
+            "launch": None,
+            "error": str(exc),
+        }
+    runtime.connector_available = bool(launch.get("connector_ready"))
+    runtime.connector_message = "connector available" if runtime.connector_available else "connector unavailable after launch"
+    runtime.local_api_available = bool(launch.get("local_api_ready"))
+    runtime.local_api_message = "local API available" if runtime.local_api_available else "local API unavailable after launch"
+    return {
+        "attempted": True,
+        "ok": runtime.local_api_available,
+        "local_api_ready": runtime.local_api_available,
+        "launch": launch,
+        "error": None if runtime.local_api_available else "Zotero Local API was not available after launching Zotero.",
+    }
+
+
+def ensure_bridge_endpoint_ready(
+    runtime: RuntimeContext,
+    bridge: Any,
+    *,
+    wait_timeout: int = 30,
+    poll_interval: float = 0.5,
+) -> dict[str, Any]:
+    """Launch Zotero when needed and wait for the CLI Bridge endpoint."""
+    if bridge.bridge_endpoint_active():
+        return {"attempted": False, "ok": True, "endpoint_active": True, "reason": "CLI Bridge endpoint already active"}
+    try:
+        launch = launch_zotero(runtime, wait_timeout=wait_timeout)
+    except (OSError, RuntimeError, FileNotFoundError) as exc:
+        return {
+            "attempted": True,
+            "ok": False,
+            "endpoint_active": False,
+            "launch": None,
+            "error": str(exc),
+        }
+    runtime.connector_available = bool(launch.get("connector_ready"))
+    runtime.connector_message = "connector available" if runtime.connector_available else "connector unavailable after launch"
+    deadline = time.time() + wait_timeout
+    endpoint_active = False
+    while time.time() < deadline:
+        if bridge.bridge_endpoint_active():
+            endpoint_active = True
+            break
+        time.sleep(poll_interval)
+    return {
+        "attempted": True,
+        "ok": endpoint_active,
+        "endpoint_active": endpoint_active,
+        "launch": launch,
+        "error": None if endpoint_active else "CLI Bridge endpoint was not active after launching Zotero.",
     }
 
 

@@ -12,6 +12,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 from cli_anything.zotero.core import docx as docx_tools
+from cli_anything.zotero.core import discovery
 from cli_anything.zotero.core.discovery import RuntimeContext
 from cli_anything.zotero.utils import zotero_paths
 
@@ -224,9 +225,10 @@ def zoterify_document(
     """Convert {{zotero:KEY}} placeholders into Zotero LibreOffice fields."""
     _require_libreoffice_backend(backend)
     _require_bibliography_mode(bibliography)
-    if not bridge.bridge_endpoint_active():
+    zotero_startup = discovery.ensure_bridge_endpoint_ready(runtime, bridge)
+    if not zotero_startup.get("ok"):
         raise RuntimeError(
-            "CLI Bridge endpoint is not active. Run: zotero-cli app install-plugin, "
+            "CLI Bridge endpoint is not active after launching Zotero. Run: zotero-cli app install-plugin, "
             "restart Zotero, then verify with: zotero-cli app plugin-status"
         )
 
@@ -324,6 +326,7 @@ def zoterify_document(
         "save": save_result,
         "ready_for_user": ready_for_user,
         "open": open_result,
+        "zotero_startup": zotero_startup,
         "libreoffice_warmup": warmup_result,
         "bridge": bridge_payload,
         "inspection": {

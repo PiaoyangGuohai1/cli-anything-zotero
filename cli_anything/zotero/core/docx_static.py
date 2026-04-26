@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import html
 import re
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
 from cli_anything.zotero.core import docx as docx_tools
-from cli_anything.zotero.core import rendering
+from cli_anything.zotero.core import discovery, rendering
 from cli_anything.zotero.core.discovery import RuntimeContext
 
 
@@ -44,6 +45,12 @@ def render_static_citations(
         raise ValueError("No Zotero placeholders were found. Use {{zotero:ITEMKEY}} or {{zotero:KEY1,KEY2}}.")
 
     item_by_key = {str(item["key"]): item for item in validation["items"]}
+    zotero_startup = discovery.ensure_local_api_ready(runtime)
+    if not zotero_startup.get("ok"):
+        raise RuntimeError(
+            "Zotero Local API is not available after launching Zotero. "
+            "Open Zotero, enable the Local API, then rerun this command."
+        )
     rendered_items = _render_items(runtime, item_by_key, style=style, locale=locale, session=session)
     root = ET.fromstring(docx_tools._read_document_xml(source_path))
     rendered_placeholders = _replace_placeholders_with_static_text(root, rendered_items)
@@ -75,6 +82,7 @@ def render_static_citations(
         "bibliography_count": len(bibliography_entries),
         "rendered_placeholders": rendered_placeholders,
         "items": validation["items"],
+        "zotero_startup": zotero_startup,
         "inspection": {
             "field_count": inspection["field_count"],
             "field_counts": inspection["field_counts"],
@@ -98,13 +106,48 @@ def _render_items(
 ) -> dict[str, dict[str, str]]:
     rendered: dict[str, dict[str, str]] = {}
     for key in sorted(item_by_key):
-        citation = rendering.citation_item(runtime, key, style=style, locale=locale, session=session).get("citation") or ""
-        bibliography = rendering.bibliography_item(runtime, key, style=style, locale=locale, session=session).get("bibliography") or ""
+        citation = _render_with_startup_retry(
+            rendering.citation_item,
+            runtime,
+            key,
+            style=style,
+            locale=locale,
+            session=session,
+        ).get("citation") or ""
+        bibliography = _render_with_startup_retry(
+            rendering.bibliography_item,
+            runtime,
+            key,
+            style=style,
+            locale=locale,
+            session=session,
+        ).get("bibliography") or ""
         rendered[key] = {
             "citation": _plain_text(str(citation)),
             "bibliography": _plain_text(str(bibliography)),
         }
     return rendered
+
+
+def _render_with_startup_retry(func: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    last_error: RuntimeError | None = None
+    max_attempts = 21
+    for attempt in range(max_attempts):
+        try:
+            return func(*args, **kwargs)
+        except RuntimeError as exc:
+            if not _is_transient_local_api_error(exc) or attempt == max_attempts - 1:
+                raise
+            last_error = exc
+            time.sleep(0.75)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Zotero Local API rendering failed unexpectedly.")
+
+
+def _is_transient_local_api_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return "HTTP 500" in message or "HTTP request failed" in message
 
 
 def _replace_placeholders_with_static_text(root: ET.Element, rendered_items: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
