@@ -113,6 +113,33 @@ zotero-cli --json docx render-citations manuscript.docx --output manuscript-stat
 # Dynamic final DOCX: use Zotero/LibreOffice fields when the user needs Refresh
 zotero-cli --json docx doctor
 zotero-cli --json docx insert-citations manuscript.docx --output manuscript-zotero.docx --force
+
+### AI DOCX Citation Decision Flow
+
+When the user provides a DOCX draft that contains citations, follow this explicit branch:
+
+- Ask for intent if mode is unclear:
+  - "Do you want static references (final text now), or dynamic references (refreshable in Zotero/LibreOffice)?"
+- If static is requested:
+  - `zotero-cli --json docx validate-placeholders <docx>`
+  - `zotero-cli --json docx render-citations <docx> --output <final.docx> --force`
+- If dynamic is requested or user mentions later editing/refresh:
+  - `zotero-cli --json docx validate-placeholders <docx>`
+  - `zotero-cli --json docx doctor`
+  - `zotero-cli --json docx insert-citations <docx> --output <final.docx> --force`
+- If dynamic conversion returns environment errors:
+  - do not retry blindly
+  - report exact error context from `docx doctor`/`docx zoterify-probe`
+  - offer fallback to static mode (`render-citations`)
+
+Keep only user-facing outputs:
+- input placeholder DOCX
+- final converted DOCX
+- debug artifacts only if user explicitly asked for `--debug-dir`
+
+Behavior note:
+- `item citation` and `item bibliography` are static previews and must **not** be used as a replacement for DOCX writing conversion.
+- `docx prepare-zotero-import` remains experimental and should not be called in normal user workflows.
 ```
 
 When drafting DOCX content with AI, never invent final static citations such as
@@ -238,4 +265,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-0.3.3
+0.9.4

@@ -34,7 +34,7 @@ class AgentHarnessPackagingTests(unittest.TestCase):
     def test_setup_reports_expected_version(self):
         result = subprocess.run([sys.executable, str(HARNESS_ROOT / "setup.py"), "--version"], cwd=HARNESS_ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(result.stdout.strip(), "0.9.3")
+        self.assertEqual(result.stdout.strip(), "0.9.4")
 
     def test_setup_declares_user_facing_entrypoints(self):
         setup_text = (HARNESS_ROOT / "setup.py").read_text(encoding="utf-8")

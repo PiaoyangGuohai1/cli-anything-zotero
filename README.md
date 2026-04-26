@@ -201,6 +201,21 @@ the Zotero LibreOffice Add-in, and the CLI Bridge plugin. Run `docx doctor`
 when setting up a machine or when an AI agent needs to decide whether the
 workflow is installed.
 
+Recommended AI protocol:
+
+1. `zotero-cli --json docx validate-placeholders <input.docx>`
+2. If the user wants editable references / refresh support:
+   - `zotero-cli --json docx doctor`
+   - `zotero-cli --json docx insert-citations <input.docx> --output <final.docx> --force`
+   - If conversion fails, report the failing layer from `doctor` and ask the user for next steps.
+3. If the user wants static output or dynamic is unavailable:
+   - `zotero-cli --json docx render-citations <input.docx> --output <final.docx> --force`
+
+Keep these files only as handoff artifacts:
+- Placeholder draft (`<input.docx>`)
+- Final converted draft (`<final.docx>`)
+- No intermediate DOCX should be exposed unless `--debug-dir` is explicitly requested.
+
 Platform support for this optional workflow:
 - macOS: tested end-to-end with automatic open, conversion, save, and Word-compatible DOCX output.
 - Windows/Linux: the base CLI works, and `docx doctor` can report missing dependencies. Full automatic LibreOffice open/save for dynamic DOCX citations still needs real Windows/Linux desktop validation; users may need to open or save the LibreOffice document manually until platform automation is verified.
@@ -210,6 +225,8 @@ diagnostics for setup or failure cases. Add `--debug-dir` only when you want
 JSON artifacts for troubleshooting.
 `docx prepare-zotero-import` exists only as an experimental debugging command;
 it is not a supported writing workflow after Zotero 9 + LibreOffice testing.
+`docx insert-citations` and `docx render-citations` are the two supported outputs
+for AI-authored citation insertion.
 `item citation` and `item bibliography` render static previews; they are not
 refreshable Word/LibreOffice Zotero fields. BIB export is a separate export
 feature and is not part of the DOCX writing workflow.

@@ -178,6 +178,21 @@ AI 生成 DOCX 时，应插入 `{{zotero:ITEMKEY}}` 或
 Zotero Desktop、LibreOffice、Zotero LibreOffice Add-in，以及 CLI Bridge
 插件。新机器或 AI 自动执行前，先跑 `docx doctor` 判断环境是否齐全。
 
+AI 推荐流程（用户给定占位符文稿后）：
+
+1. `zotero-cli --json docx validate-placeholders <原稿.docx>`
+2. 如果用户需要可刷新/可继续编辑的引用：
+   - `zotero-cli --json docx doctor`
+   - `zotero-cli --json docx insert-citations <原稿.docx> --output <最终.docx> --force`
+   - 如果失败，返回 `doctor` 的失败层级并给出修复建议，不直接假设成功。
+3. 如果用户只要一次性定稿，或者动态流程不可用：
+   - `zotero-cli --json docx render-citations <原稿.docx> --output <最终.docx> --force`
+
+默认只保留两类输出：
+- 原始占位符文稿
+- 最终输出文稿
+- 仅当用户明确要求 `--debug-dir` 时才保留中间调试文件。
+
 这个可选工作流的平台状态：
 - macOS：已经端到端验证，可自动打开、转换、保存，并生成 Word 可打开的 DOCX。
 - Windows/Linux：基础 CLI 可以使用，`docx doctor` 也可以检查依赖；但动态 DOCX 引用的 LibreOffice 自动打开/保存还需要真实 Windows/Linux 桌面环境验证。在平台自动化验证完成前，用户可能需要手动打开或保存 LibreOffice 文档。
@@ -187,6 +202,7 @@ Zotero Desktop、LibreOffice、Zotero LibreOffice Add-in，以及 CLI Bridge
 转换命令额外传 `--debug-dir <目录>`，让它保存 placeholder map、bridge 返回值
 和 inspect 结果。`docx prepare-zotero-import` 只保留为实验性调试命令；
 在 Zotero 9 + LibreOffice 测试中它不稳定，因此不作为正式写作流程推荐。
+`docx insert-citations` 和 `docx render-citations` 是 AI 写作场景两种正式输出。
 `item citation` 和 `item bibliography` 只适合静态预览；它们不是 Word 或
 LibreOffice Zotero 插件可刷新的字段。BIB 导出是独立导出功能，不接入 DOCX
 写作流程。
