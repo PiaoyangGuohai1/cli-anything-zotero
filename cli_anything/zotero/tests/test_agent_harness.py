@@ -34,13 +34,13 @@ class AgentHarnessPackagingTests(unittest.TestCase):
     def test_setup_reports_expected_version(self):
         result = subprocess.run([sys.executable, str(HARNESS_ROOT / "setup.py"), "--version"], cwd=HARNESS_ROOT, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertEqual(result.stdout.strip(), "0.9.5")
+        self.assertEqual(result.stdout.strip(), "1.0.0")
 
     def test_setup_declares_user_facing_entrypoints(self):
         setup_text = (HARNESS_ROOT / "setup.py").read_text(encoding="utf-8")
         self.assertIn('PACKAGE_NAME = "cli-anything-zotero"', setup_text)
         self.assertIn("zotero-cli=cli_anything.zotero.zotero_cli:entrypoint", setup_text)
-        self.assertIn("zotero-mcp=cli_anything.zotero.zotero_cli:mcp_entrypoint", setup_text)
+        self.assertNotIn("zotero-mcp=", setup_text)
 
     def test_skill_generator_regenerates_skill(self):
         output_path = HARNESS_ROOT / "tmp-SKILL.md"

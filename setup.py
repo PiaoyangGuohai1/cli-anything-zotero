@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 PACKAGE_NAME = "cli-anything-zotero"
-PACKAGE_VERSION = "0.9.5"
+PACKAGE_VERSION = "1.0.0"
 
 
 def _handle_metadata_query(argv: list[str]) -> bool:
@@ -37,7 +37,7 @@ setup(
     author="cli-anything contributors",
     author_email="",
     license="Apache-2.0",
-    description="Zotero CLI and MCP server package — installs zotero-cli and zotero-mcp for AI-assisted library workflows.",
+    description="Zotero CLI and Python package for AI-assisted local library workflows.",
     long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     url="https://github.com/PiaoyangGuohai1/cli-anything-zotero",
@@ -47,10 +47,9 @@ setup(
         "Changelog": "https://github.com/PiaoyangGuohai1/cli-anything-zotero/releases",
     },
     keywords=[
-        "zotero", "cli", "mcp", "mcp-server", "model-context-protocol",
-        "reference-manager", "bibliography", "ai-agents", "ai", "llm",
-        "academic", "research-tools", "bibtex", "citation-manager",
-        "claude", "claude-code", "cursor", "python",
+        "zotero", "cli", "reference-manager", "bibliography",
+        "ai-agents", "ai", "llm", "academic", "research-tools",
+        "bibtex", "citation-manager", "claude-code", "cursor", "python",
     ],
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -74,15 +73,11 @@ setup(
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
         ],
-        "mcp": [
-            "mcp>=1.0.0",
-        ],
     },
     entry_points={
         "console_scripts": [
             "cli-anything-zotero=cli_anything.zotero.zotero_cli:entrypoint",
             "zotero-cli=cli_anything.zotero.zotero_cli:entrypoint",
-            "zotero-mcp=cli_anything.zotero.zotero_cli:mcp_entrypoint",
         ],
     },
     package_data={

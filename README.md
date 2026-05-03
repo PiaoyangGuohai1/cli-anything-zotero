@@ -10,6 +10,8 @@
 
 [中文文档](docs/README_zh.md) | English
 
+> **MCP legacy notice:** `v0.9.5` is the final release with the `zotero-mcp` command and `cli-anything-zotero[mcp]` extra. New releases are CLI/SDK-first. Existing MCP users should pin `pip install "cli-anything-zotero[mcp]==0.9.5"` or use the `legacy/mcp` branch.
+
 ---
 
 ## For Non-Programmers
@@ -42,25 +44,22 @@ Built on [CLI-Anything](https://github.com/HKUDS/CLI-Anything) by [HKUDS](https:
 - **PDF management** — attach files, auto-find PDFs online, search annotations
 - **Write operations** — update metadata, manage tags, add notes, trigger sync
 - **Advanced** — execute arbitrary Zotero JS, semantic search with local embeddings, AI analysis
-- **MCP server** — 56 tools for Claude Desktop, Cursor, LM Studio, and other MCP clients
 
 All write operations run locally through the JS Bridge — no API key or internet connection required.
 
 ---
 
-## Choose Your Mode
+## CLI-First Usage
 
-This tool supports two modes. **Pick the one that fits your AI client:**
+`cli-anything-zotero` is now maintained as a CLI/SDK-first tool. The primary interface is the `zotero-cli` shell command, which works well for Codex, Claude Code, Cursor, shell scripts, and other agents that can run terminal commands.
 
-| | CLI Mode | MCP Mode |
-|---|---|---|
-| **How AI calls it** | Shell commands (`zotero-cli item find ...`) | Structured tool calls (no command-line needed) |
-| **Works with** | Any AI that can run shell commands (Claude Code, ChatGPT, Cursor, Windsurf, Cline, etc.) | AI clients with MCP support (Claude Desktop, Cursor, Claude Code, LM Studio, etc.) |
-| **AI learning curve** | AI runs `--help` once to discover all 70+ commands | Zero — 56 tools are auto-registered with typed parameters |
-| **Error rate** | Occasional typos by AI (self-corrects) | Near-zero (parameters are type-constrained) |
-| **Install** | `pip install cli-anything-zotero` | `pip install 'cli-anything-zotero[mcp]'` + client config |
+For legacy MCP users, install the frozen MCP release explicitly:
 
-> **Not sure?** If your AI client supports MCP, choose MCP — it's more reliable. Otherwise, CLI works everywhere.
+```bash
+pip install "cli-anything-zotero[mcp]==0.9.5"
+```
+
+The `legacy/mcp` branch and the `v0.9.5` release remain available, but MCP receives no new feature maintenance after that line.
 
 ---
 
@@ -70,18 +69,11 @@ This tool supports two modes. **Pick the one that fits your AI client:**
 
 ### Step 1: Install the package
 
-**CLI Mode** (for any AI assistant):
 ```bash
 pip install cli-anything-zotero
 ```
 
-**MCP Mode** (for Claude Desktop, Cursor, Claude Code, etc.):
-```bash
-pip install 'cli-anything-zotero[mcp]'
-```
-
-> Both modes are included in the same package. The `[mcp]` extra just adds MCP protocol dependencies.
-> The package name stays `cli-anything-zotero`; the user-facing commands are `zotero-cli` for CLI workflows and `zotero-mcp` for MCP clients. The old `cli-anything-zotero` command remains as a compatibility alias.
+This installs the `zotero-cli` command. The old `cli-anything-zotero` command remains as a compatibility alias.
 
 ### Step 2: Install the JS Bridge Plugin (one-time, both modes)
 
@@ -109,41 +101,14 @@ zotero-cli docx doctor
 
 ### Step 3: Set up your AI client
 
-<details>
-<summary><b>CLI Mode — No extra setup needed</b></summary>
-
-Just tell your AI assistant the tool is available. It will run `zotero-cli --help` to discover all commands automatically.
+No client-specific setup is required. Tell your AI assistant that `zotero-cli` is available; it can run `zotero-cli --help` to discover commands.
 
 Verify it works:
+
 ```bash
 zotero-cli app ping
 zotero-cli js "return Zotero.version"
 ```
-</details>
-
-<details>
-<summary><b>MCP Mode — Configure your AI client</b></summary>
-
-**Claude Code:**
-```bash
-claude mcp add zotero --scope user -- zotero-mcp
-```
-
-**Claude Desktop / Cursor / LM Studio** — add to your MCP config file:
-```json
-{
-  "mcpServers": {
-    "zotero": {
-      "command": "zotero-mcp"
-    }
-  }
-}
-```
-
-After restarting your AI client, 56 Zotero tools will be available automatically.
-
-Full MCP reference: **[docs/MCP.md](docs/MCP.md)**
-</details>
 
 ### Troubleshooting
 
@@ -284,61 +249,15 @@ zotero-cli item analyze ITEM_KEY --question "What are the main findings?"
 
 ---
 
-## Upgrading to 0.4.0
+## Legacy MCP Users
 
-**Breaking change for MCP users:** All MCP tool names have been renamed from mixed conventions to a consistent `group_action` pattern matching the CLI. If you have agent prompts or configs referencing old tool names, update them:
+MCP support is frozen at `v0.9.5`. To keep using the previous MCP server, install:
 
-<details>
-<summary>MCP tool rename table (click to expand)</summary>
+```bash
+pip install "cli-anything-zotero[mcp]==0.9.5"
+```
 
-| Old name (0.3.x) | New name (0.4.0) |
-|---|---|
-| `list_libraries` | `library_list` |
-| `list_collections` | `collection_list` |
-| `find_collections` | `collection_find` |
-| `get_collection` | `collection_get` |
-| `create_collection` | `collection_create` |
-| `delete_collection` | `collection_delete` |
-| `update_collection` | `collection_rename` |
-| `find_pdfs_in_collection` | `collection_find_pdfs` |
-| `remove_from_collection` | `collection_remove_item` |
-| `list_items` | `item_list` |
-| `find_items` | `item_find` |
-| `get_item` | `item_get` |
-| `export_item` | `item_export` |
-| `citation_item` | `item_citation` |
-| `bibliography_item` | `item_bibliography` |
-| `manage_tags` | `item_tag` |
-| `update_item_fields` | `item_update` |
-| `delete_item` | `item_delete` |
-| `find_pdf` | `item_find_pdf` |
-| `attach_pdf` | `item_attach` |
-| `add_to_collection` | `item_add_to_collection` |
-| `get_annotations` | `item_annotations` |
-| `search_annotations` | `item_search_annotations` |
-| `search_fulltext` | `item_search_fulltext` |
-| `semantic_search` | `item_semantic_search` |
-| `find_similar` | `item_similar` |
-| `build_index` | `item_build_index` |
-| `find_duplicates` | `item_duplicates` |
-| `get_citation_metrics` | `item_metrics` |
-| `analyze_item` | `item_analyze` |
-| `get_note` | `note_get` |
-| `add_note` | `note_add` |
-| `list_tags` | `tag_list` |
-| `list_searches` | `search_list` |
-| `list_styles` | `style_list` |
-| `import_from_doi` | `import_doi` |
-| `import_from_pmid` | `import_pmid` |
-| `trigger_sync` | `sync` |
-| `execute_js` | `js` |
-
-New tools in 0.4.0: `search_get`, `search_items`, `item_move_to_collection`
-</details>
-
-**CLI users:** No breaking changes. The `--help` output now shows all commands at once.
-
----
+You can also use the `legacy/mcp` branch for source installs. Starting with `v1.0.0`, the maintained package installs only CLI/SDK surfaces and no longer provides the `zotero-mcp` command.
 
 ## Related Projects
 
@@ -349,7 +268,7 @@ There are several great tools in the Zotero ecosystem. Each has different streng
 | **Approach** | Local JS Bridge | Web API + MCP | Web API + CLI | Web API + CLI |
 | **Best for** | Local-first, full control | MCP-native workflows | Agent-driven research | Scripting & automation |
 | **Write ops** | Local (no API key) | Via Web API | Via Web API | Via Web API |
-| **MCP support** | 56 tools | Yes | 45 tools | No |
+| **MCP support** | Legacy via v0.9.5 | Yes | 45 tools | No |
 | **Terminal CLI** | Yes | No | Yes | Yes |
 | **Zotero JS access** | Yes | No | No | No |
 | **License** | Apache 2.0 | MIT | CC BY-NC 4.0 | MIT |

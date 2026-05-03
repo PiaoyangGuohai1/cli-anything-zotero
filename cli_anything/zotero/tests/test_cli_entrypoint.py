@@ -7,7 +7,6 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
-import types
 import unittest
 import zipfile
 from pathlib import Path
@@ -15,7 +14,7 @@ from unittest import mock
 
 from cli_anything.zotero.tests._helpers import create_sample_environment, fake_zotero_http_server, sample_pdf_bytes
 from cli_anything.zotero.core import session as session_mod
-from cli_anything.zotero.zotero_cli import RootCliConfig, _handle_repl_builtin, dispatch, mcp_entrypoint, repl_help_text, run_repl
+from cli_anything.zotero.zotero_cli import RootCliConfig, _handle_repl_builtin, dispatch, repl_help_text, run_repl
 from cli_anything.zotero.tests.test_core import write_docx_with_document_xml
 
 
@@ -79,46 +78,11 @@ class CliEntrypointTests(unittest.TestCase):
     def test_version_option_reports_package_version(self):
         result = self.run_cli(["--version"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("0.9.5", result.stdout)
+        self.assertIn("1.0.0", result.stdout)
 
     def test_dispatch_uses_requested_prog_name(self):
         result = dispatch(["--help"], prog_name="zotero-cli")
         self.assertEqual(result, 0)
-
-    def test_zotero_mcp_entrypoint_runs_server_directly(self):
-        fake_server = mock.Mock()
-        fake_module = types.SimpleNamespace(create_server=mock.Mock(return_value=fake_server))
-
-        with mock.patch.dict("sys.modules", {"cli_anything.zotero.mcp_server": fake_module}):
-            result = mcp_entrypoint([
-                "--backend",
-                "sqlite",
-                "--data-dir",
-                "D:/zotero-data",
-                "--profile-dir",
-                "D:/zotero-profile",
-                "--executable",
-                "D:/Program Files/Zotero/zotero.exe",
-                "--transport",
-                "sse",
-            ])
-
-        self.assertEqual(result, 0)
-        fake_module.create_server.assert_called_once_with(
-            backend="sqlite",
-            data_dir="D:/zotero-data",
-            profile_dir="D:/zotero-profile",
-            executable="D:/Program Files/Zotero/zotero.exe",
-        )
-        fake_server.run.assert_called_once_with(transport="sse")
-
-    def test_zotero_mcp_entrypoint_reports_missing_mcp_dependency_cleanly(self):
-        with mock.patch.dict("sys.modules", {"cli_anything.zotero.mcp_server": None}):
-            with mock.patch("click.echo") as echo:
-                result = mcp_entrypoint([])
-
-        self.assertEqual(result, 1)
-        self.assertIn("Error:", echo.call_args.args[0])
 
     def test_force_installed_mode_requires_real_command(self):
         with tempfile.TemporaryDirectory() as tmpdir:

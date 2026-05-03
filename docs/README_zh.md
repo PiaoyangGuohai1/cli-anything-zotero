@@ -4,6 +4,8 @@
 
 基于 [CLI-Anything](https://github.com/HKUDS/CLI-Anything) 框架。专为 AI Agent 和高级用户设计。
 
+> **MCP legacy 提示：** `v0.9.5` 是最后一个包含 `zotero-mcp` 命令和 `cli-anything-zotero[mcp]` extra 的版本。后续版本以 CLI/SDK 为主。仍需要 MCP 的用户请固定安装 `pip install "cli-anything-zotero[mcp]==0.9.5"`，或使用 `legacy/mcp` 分支。
+
 **微信交流群** 👇
 
 <img src="images/wechat-group.jpg" alt="微信群二维码" width="250">
@@ -29,19 +31,17 @@
 
 ---
 
-## 选择你的模式
+## CLI 优先使用方式
 
-本工具支持两种模式，**选择适合你 AI 客户端的那个：**
+`cli-anything-zotero` 现在以 CLI/SDK 为主要入口。推荐让 Codex、Claude Code、Cursor 或其他能运行 shell 的 AI 工具直接调用 `zotero-cli`。
 
-| | CLI 模式 | MCP 模式 |
-|---|---|---|
-| **AI 怎么调用** | Shell 命令（`zotero-cli item find ...`） | 结构化工具调用（不需要命令行） |
-| **适配平台** | 任何能跑 shell 的 AI（Claude Code、ChatGPT、Cursor、Windsurf、Cline 等） | 支持 MCP 的 AI 客户端（Claude Desktop、Cursor、Claude Code、LM Studio 等） |
-| **AI 学习成本** | AI 运行一次 `--help` 即可学会全部 70+ 命令 | 零 — 56 个工具自动注册，参数有类型约束 |
-| **出错率** | AI 偶尔拼错命令（会自动纠正） | 接近零（参数有类型约束） |
-| **安装** | `pip install cli-anything-zotero` | `pip install 'cli-anything-zotero[mcp]'` + 客户端配置 |
+仍需要 MCP 的用户请固定安装最后支持版本：
 
-> **不确定选哪个？** 如果你的 AI 客户端支持 MCP，选 MCP — 更可靠。否则，CLI 在所有平台都能用。
+```bash
+pip install "cli-anything-zotero[mcp]==0.9.5"
+```
+
+`legacy/mcp` 分支和 `v0.9.5` release 会保留，但后续 MCP 不再接收功能更新。
 
 ---
 
@@ -51,18 +51,11 @@
 
 ### 第一步：安装
 
-**CLI 模式**（适用于所有 AI 助手）：
 ```bash
 pip install cli-anything-zotero
 ```
 
-**MCP 模式**（适用于 Claude Desktop、Cursor、Claude Code 等）：
-```bash
-pip install 'cli-anything-zotero[mcp]'
-```
-
-> 两种模式在同一个包里。`[mcp]` 只是额外安装 MCP 协议依赖。
-> 包名仍然是 `cli-anything-zotero`；面向用户的命令是 `zotero-cli`（CLI）和 `zotero-mcp`（MCP）。旧的 `cli-anything-zotero` 命令会继续作为兼容别名保留。
+这会安装 `zotero-cli` 命令。旧的 `cli-anything-zotero` 命令会继续作为兼容别名保留。
 
 ### 第二步：安装 JS Bridge 插件（一次性操作，两种模式都需要）
 
@@ -90,41 +83,14 @@ zotero-cli docx doctor
 
 ### 第三步：配置你的 AI 客户端
 
-<details>
-<summary><b>CLI 模式 — 无需额外配置</b></summary>
-
-告诉你的 AI 助手这个工具可用即可。AI 会运行 `zotero-cli --help` 自动发现所有命令。
+无需额外客户端配置。告诉你的 AI 助手 `zotero-cli` 可用即可，AI 可以通过 `zotero-cli --help` 自动发现所有命令。
 
 验证安装：
+
 ```bash
 zotero-cli app ping
 zotero-cli js "return Zotero.version"
 ```
-</details>
-
-<details>
-<summary><b>MCP 模式 — 配置 AI 客户端</b></summary>
-
-**Claude Code：**
-```bash
-claude mcp add zotero --scope user -- zotero-mcp
-```
-
-**Claude Desktop / Cursor / LM Studio** — 在 MCP 配置文件中添加：
-```json
-{
-  "mcpServers": {
-    "zotero": {
-      "command": "zotero-mcp"
-    }
-  }
-}
-```
-
-重启 AI 客户端后，56 个 Zotero 工具将自动可用。
-
-完整 MCP 参考：**[MCP.md](MCP.md)**
-</details>
 
 ### 常见问题
 
@@ -238,13 +204,15 @@ zotero-cli js "return await Zotero.Items.getAll(1).then(i => i.length)"
 
 ---
 
-## 升级到 0.4.0
+## Legacy MCP 用户
 
-**MCP 用户注意：** 所有 MCP 工具名已重命名为 `group_action` 格式以匹配 CLI 结构。详见英文 README 的 [Upgrading to 0.4.0](../README.md#upgrading-to-040) 部分。
+MCP 支持冻结在 `v0.9.5`。如需继续使用旧 MCP server，请安装：
 
-**CLI 用户：** 无破坏性变更。`--help` 现在一次性显示所有命令。
+```bash
+pip install "cli-anything-zotero[mcp]==0.9.5"
+```
 
----
+也可以使用 `legacy/mcp` 分支从源码安装。从 `v1.0.0` 开始，主线只维护 CLI/SDK surface，不再安装 `zotero-mcp` 命令。
 
 ## 许可证
 

@@ -271,4 +271,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-0.9.5
+1.0.0

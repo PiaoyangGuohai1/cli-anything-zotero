@@ -2042,55 +2042,6 @@ def repl_command(ctx: click.Context) -> int:
     return run_repl(_current_cli_config(ctx))
 
 
-@cli.group("mcp")
-def mcp_group() -> None:
-    """MCP (Model Context Protocol) server commands."""
-
-
-@mcp_group.command("serve")
-@click.option("--transport", type=click.Choice(["stdio", "sse"]), default="stdio", show_default=True,
-              help="Transport mode. Use 'stdio' for Claude Desktop/Cursor, 'sse' for HTTP clients.")
-@click.pass_context
-def mcp_serve(ctx: click.Context, transport: str) -> None:
-    """Start the MCP server for Claude Desktop, Cursor, or other MCP clients."""
-    _run_mcp_server(_current_cli_config(ctx), transport)
-
-
-def _run_mcp_server(config: RootCliConfig, transport: str) -> None:
-    try:
-        from cli_anything.zotero.mcp_server import create_server
-    except ImportError as exc:
-        raise RuntimeError(str(exc)) from exc
-    srv = create_server(
-        backend=config.backend,
-        data_dir=config.data_dir,
-        profile_dir=config.profile_dir,
-        executable=config.executable,
-    )
-    srv.run(transport=transport)
-
-
-@click.command(context_settings=CONTEXT_SETTINGS)
-@click.option("--backend", type=click.Choice(["auto", "sqlite", "api"]), default="auto", show_default=True)
-@click.option("--data-dir", default=None, help="Explicit Zotero data directory.")
-@click.option("--profile-dir", default=None, help="Explicit Zotero profile directory.")
-@click.option("--executable", default=None, help="Explicit Zotero executable path.")
-@click.option("--transport", type=click.Choice(["stdio", "sse"]), default="stdio", show_default=True,
-              help="Transport mode. Use 'stdio' for Claude Desktop/Cursor, 'sse' for HTTP clients.")
-def mcp_cli(backend: str, data_dir: str | None, profile_dir: str | None, executable: str | None, transport: str) -> None:
-    """Start the Zotero MCP server."""
-    _run_mcp_server(
-        RootCliConfig(
-            backend=backend,
-            data_dir=data_dir,
-            profile_dir=profile_dir,
-            executable=executable,
-            json_output=False,
-        ),
-        transport,
-    )
-
-
 def dispatch(argv: list[str] | None = None, prog_name: str | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     json_mode = "--json" in args
@@ -2116,17 +2067,3 @@ def dispatch(argv: list[str] | None = None, prog_name: str | None = None) -> int
 def entrypoint(argv: list[str] | None = None) -> int:
     return dispatch(argv, prog_name=sys.argv[0])
 
-
-def mcp_entrypoint(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
-    try:
-        result = mcp_cli.main(args=args, prog_name="zotero-mcp", standalone_mode=False)
-    except click.exceptions.Exit as exc:
-        return int(exc.exit_code)
-    except click.ClickException as exc:
-        exc.show()
-        return int(exc.exit_code)
-    except RuntimeError as exc:
-        click.echo(f"Error: {exc}", err=True)
-        return 1
-    return int(result or 0)
