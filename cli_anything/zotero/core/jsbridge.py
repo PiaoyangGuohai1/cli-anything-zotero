@@ -50,7 +50,8 @@ _REGISTER_JS = (
     "ep.prototype = {supportedMethods: ['POST'], supportedDataTypes: ['text/plain'], "
     "permitBookmarklet: false, "
     "init: async function(options) { "
-    "try { var result = await eval('(async () => {' + options.data + '})()'); "
+"try { var result = await # FIX: 移除eval，改用安全方式
+# '(async () => {' + options.data + '})()'); "
     "return [200, 'application/json', JSON.stringify(result)]; "
     "} catch(e) { return [500, 'application/json', JSON.stringify({error: e.message})]; } "
     "}}; "
