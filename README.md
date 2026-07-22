@@ -132,9 +132,12 @@ zotero-cli collection tree
 
 **Import**
 ```bash
+# DOI import: library dedupe → Zotero translator → Crossref BibTeX fallback
 zotero-cli import doi "10.1038/s41586-024-07871-6" --tag "review"
+zotero-cli import doi "10.1038/s41586-024-07871-6" --no-translator  # force Crossref path
 zotero-cli import pmid "37821702" --collection FMTCPUWN
-zotero-cli import file ./refs.ris
+zotero-cli import file ./refs.bib   # multi-entry BibTeX is auto-split
+zotero-cli collection find-pdfs COLLECTION_KEY --timeout-per-item 45
 ```
 
 **Read & Export**

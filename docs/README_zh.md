@@ -115,6 +115,9 @@ zotero-cli collection tree
 **导入**
 ```bash
 zotero-cli import doi "10.1038/s41586-024-07871-6" --tag "综述"
+# DOI：库内去重 → Zotero translator → Crossref BibTeX 回退
+zotero-cli import doi "10.1038/s41586-024-07871-6" --no-translator
+zotero-cli collection find-pdfs COLLECTION_KEY --timeout-per-item 45
 zotero-cli import pmid "37821702" --collection FMTCPUWN
 zotero-cli import file ./refs.ris
 ```

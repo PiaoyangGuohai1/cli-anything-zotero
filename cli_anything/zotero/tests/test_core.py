@@ -135,9 +135,9 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.1.0")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.1.0")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.1.0")
+            self.assertEqual(manifest["version"], "1.2.0")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.2.0")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.2.0")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
             self.assertEqual(zotero_app["strict_max_version"], "9.0.*")
@@ -1376,6 +1376,145 @@ class ImportCoreTests(unittest.TestCase):
         with mock.patch.object(self.runtime, "connector_available", False):
             with self.assertRaises(RuntimeError):
                 imports_mod.import_json(self.runtime, json_path)
+
+    def test_normalize_doi_strips_url_and_punctuation(self):
+        self.assertEqual(
+            imports_mod.normalize_doi("https://doi.org/10.1038/s41592-024-02201-0."),
+            "10.1038/s41592-024-02201-0",
+        )
+        self.assertEqual(imports_mod.normalize_doi("doi:10.1/abc"), "10.1/abc")
+
+    def test_split_bibtex_entries(self):
+        content = "@article{a, title={A},}\n\n@article{b, title={B},}\n"
+        entries = imports_mod._split_bibtex_entries(content)
+        self.assertEqual(len(entries), 2)
+        self.assertIn("@article{a", entries[0])
+        self.assertIn("@article{b", entries[1])
+        self.assertEqual(imports_mod._count_bibtex_entries(content), 2)
+
+    def test_application_import_payload_rejects_empty_success(self):
+        payload = imports_mod._application_import_payload({"ok": True, "data": None, "error": None})
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "EMPTY_RESULT")
+
+    def test_application_import_payload_reads_structured_success(self):
+        payload = imports_mod._application_import_payload(
+            {"ok": True, "data": {"ok": True, "key": "ABCDEFGH", "title": "Paper"}, "error": None}
+        )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["key"], "ABCDEFGH")
+
+    def test_format_bridge_error_never_returns_empty_object(self):
+        from cli_anything.zotero.core import jsbridge
+
+        self.assertEqual(jsbridge._format_bridge_error({}), "unknown bridge error")
+        self.assertEqual(jsbridge._format_bridge_error({"error": "boom"}), "boom")
+        self.assertEqual(jsbridge._format_bridge_error(None), "unknown bridge error")
+
+    def test_import_doi_falls_back_to_crossref_bibtex(self):
+        class FakeBridge:
+            def find_items_by_doi(self, doi, *, library_id=1, limit=20):
+                return {"ok": True, "data": [], "error": None}
+
+            def import_from_doi(self, doi, *, collection_key=None, tags=None, library_id=1):
+                return {
+                    "ok": True,
+                    "data": {
+                        "ok": False,
+                        "code": "TRANSLATOR_EMPTY",
+                        "error": "No items returned from any translator",
+                    },
+                    "error": None,
+                }
+
+        with mock.patch.object(self.runtime, "connector_available", True):
+            with mock.patch(
+                "cli_anything.zotero.core.imports.fetch_crossref_bibtex",
+                return_value="@article{X, title={Fallback Title}, DOI={10.1038/s41592-024-02201-0}}",
+            ):
+                with mock.patch(
+                    "cli_anything.zotero.utils.zotero_http.connector_import_text",
+                    return_value=[{"key": "FALLBACK1", "title": "Fallback Title"}],
+                ) as import_text:
+                    with mock.patch("cli_anything.zotero.utils.zotero_http.connector_update_session") as update_session:
+                        payload = imports_mod.import_doi(
+                            self.runtime,
+                            FakeBridge(),
+                            "https://doi.org/10.1038/s41592-024-02201-0",
+                            collection_key="COLLAAAA",
+                            tags=["virtual-cell"],
+                        )
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["source"], "crossref-bibtex")
+        self.assertEqual(payload["key"], "FALLBACK1")
+        self.assertEqual(payload["status"], "success")
+        import_text.assert_called_once()
+        self.assertEqual(import_text.call_args.kwargs.get("content_type"), "text/x-bibtex")
+        update_session.assert_called_once()
+        self.assertEqual(update_session.call_args.kwargs["tags"], ["virtual-cell"])
+
+    def test_import_doi_dedupes_existing_library_item(self):
+        class FakeBridge:
+            def find_items_by_doi(self, doi, *, library_id=1, limit=20):
+                return {
+                    "ok": True,
+                    "data": [{"key": "EXISTING1", "title": "Already Here", "DOI": doi}],
+                    "error": None,
+                }
+
+            def add_to_collection(self, item_key, collection_key, *, library_id=1):
+                return {"ok": True, "data": "added", "error": None}
+
+            def manage_tags(self, item_key, add_tags, remove_tags, *, library_id=1):
+                return {"ok": True, "data": "tagged", "error": None}
+
+            def import_from_doi(self, *args, **kwargs):
+                raise AssertionError("translator should not run when dedupe hits")
+
+        payload = imports_mod.import_doi(
+            self.runtime,
+            FakeBridge(),
+            "10.1038/s41592-024-02201-0",
+            collection_key="COLLAAAA",
+            tags=["t1"],
+            dedupe=True,
+        )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "already_exists")
+        self.assertEqual(payload["key"], "EXISTING1")
+        self.assertEqual(payload["source"], "library-dedupe")
+
+    def test_import_file_splits_multi_entry_bibtex(self):
+        bib_path = Path(self.tmpdir.name) / "multi.bib"
+        bib_path.write_text(
+            "@article{a, title={One},}\n@article{b, title={Two},}\n",
+            encoding="utf-8",
+        )
+        calls = []
+
+        def fake_import(port, content, *, session_id=None, content_type="text/plain", timeout=120):
+            calls.append(content)
+            title = "One" if "One" in content else "Two"
+            return [{"key": f"K{len(calls)}", "title": title}]
+
+        with mock.patch.object(self.runtime, "connector_available", True):
+            with mock.patch(
+                "cli_anything.zotero.utils.zotero_http.connector_import_text",
+                side_effect=fake_import,
+            ):
+                with mock.patch("cli_anything.zotero.utils.zotero_http.connector_update_session"):
+                    payload = imports_mod.import_file(
+                        self.runtime,
+                        bib_path,
+                        collection_ref="C1",
+                        tags=["split"],
+                    )
+
+        self.assertEqual(payload["status"], "success")
+        self.assertTrue(payload.get("split_bib"))
+        self.assertEqual(payload["imported_count"], 2)
+        self.assertEqual(len(calls), 2)
 
 
 class WorkflowCoreTests(unittest.TestCase):

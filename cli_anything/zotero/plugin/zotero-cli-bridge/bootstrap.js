@@ -9,6 +9,35 @@
 
 var cliBridgeEndpoint;
 
+function _serializeError(e) {
+  var message = null;
+  if (e == null) {
+    message = "unknown error";
+  } else if (typeof e === "string") {
+    message = e;
+  } else if (typeof e === "number" || typeof e === "boolean") {
+    message = String(e);
+  } else {
+    message =
+      (e && (e.message || e.name || (e.toString && e.toString()))) ||
+      String(e);
+  }
+  // Avoid empty / undefined messages which used to collapse to error: "{}"
+  if (!message || message === "undefined" || message === "[object Object]") {
+    try {
+      message = JSON.stringify(e);
+    } catch (_jsonErr) {
+      message = "unknown error";
+    }
+  }
+  return {
+    error: message,
+    name: (e && e.name) || null,
+    stack: (e && e.stack) ? String(e.stack).slice(0, 2000) : null,
+    raw: String(e),
+  };
+}
+
 function startup({ id, version, rootURI }) {
   cliBridgeEndpoint = function () {};
   cliBridgeEndpoint.prototype = {
@@ -18,9 +47,13 @@ function startup({ id, version, rootURI }) {
     init: async function (options) {
       try {
         var result = await eval("(async () => {" + options.data + "})()");
+        // undefined is not valid JSON; normalize to null for clients
+        if (typeof result === "undefined") {
+          result = null;
+        }
         return [200, "application/json", JSON.stringify(result)];
       } catch (e) {
-        return [500, "application/json", JSON.stringify({ error: e.message })];
+        return [500, "application/json", JSON.stringify(_serializeError(e))];
       }
     },
   };

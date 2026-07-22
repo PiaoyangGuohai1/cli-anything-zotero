@@ -561,6 +561,8 @@ def import_file(
     attachments_manifest: str | Path | None = None,
     attachment_delay_ms: int = 0,
     attachment_timeout: int = 60,
+    connector_timeout: int = 120,
+    split_bib: bool = True,
 ) -> dict[str, Any]:
     _require_connector(runtime)
     source_path = Path(path).expanduser()
@@ -577,7 +579,6 @@ def import_file(
         if manifest_path is not None
         else []
     )
-    session_id = _session_id("import-file")
     # Detect content type from file extension for connector/import
     _content_types = {
         ".bib": "text/x-bibtex", ".bibtex": "text/x-bibtex",
@@ -587,7 +588,28 @@ def import_file(
         ".csv": "text/csv",
     }
     ct = _content_types.get(source_path.suffix.lower(), "text/plain")
-    imported = zotero_http.connector_import_text(runtime.environment.port, content, session_id=session_id, content_type=ct)
+    entry_count = _count_bibtex_entries(content) if ct == "text/x-bibtex" else 1
+    # Large multi-entry BibTeX files frequently exceed a single connector call.
+    if split_bib and ct == "text/x-bibtex" and entry_count > 1:
+        return _import_bibtex_entries(
+            runtime,
+            content,
+            source_path=source_path,
+            collection_ref=collection_ref,
+            tags=tags,
+            session=session,
+            plans=plans,
+            connector_timeout=connector_timeout,
+        )
+
+    session_id = _session_id("import-file")
+    imported = zotero_http.connector_import_text(
+        runtime.environment.port,
+        content,
+        session_id=session_id,
+        content_type=ct,
+        timeout=connector_timeout,
+    )
     target = _resolve_target(runtime, collection_ref, session=session)
     normalized_tags = _normalize_tags(list(tags))
     zotero_http.connector_update_session(
@@ -613,6 +635,8 @@ def import_file(
         "items": imported,
         "attachment_summary": attachment_summary,
         "attachment_results": attachment_results,
+        "connector_timeout": connector_timeout,
+        "entry_count": entry_count,
     }
 
 
@@ -671,3 +695,334 @@ def import_json(
         "attachment_summary": attachment_summary,
         "attachment_results": attachment_results,
     }
+
+
+# ── DOI helpers / robust import ──────────────────────────────────────
+
+_DOI_RE = re.compile(r"10\.\d{4,9}/[^\s\"'<>]+", re.I)
+_BIBTEX_ENTRY_RE = re.compile(r"(?m)^\s*@\w+\s*\{")
+
+
+def normalize_doi(doi: str) -> str:
+    """Strip URL prefixes and trailing punctuation from a DOI string."""
+    text = (doi or "").strip()
+    text = re.sub(r"^https?://(dx\.)?doi\.org/", "", text, flags=re.I)
+    text = re.sub(r"^doi:\s*", "", text, flags=re.I)
+    text = text.strip().rstrip(" .),;")
+    return text
+
+
+def _count_bibtex_entries(content: str) -> int:
+    return len(_BIBTEX_ENTRY_RE.findall(content or ""))
+
+
+def _split_bibtex_entries(content: str) -> list[str]:
+    """Split a BibTeX file into individual entry strings."""
+    text = content or ""
+    matches = list(_BIBTEX_ENTRY_RE.finditer(text))
+    if not matches:
+        stripped = text.strip()
+        return [stripped] if stripped else []
+    entries: list[str] = []
+    for index, match in enumerate(matches):
+        start = match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        entry = text[start:end].strip()
+        if entry:
+            entries.append(entry)
+    return entries
+
+
+def fetch_crossref_bibtex(doi: str, *, timeout: int = 30) -> str:
+    """Fetch BibTeX metadata for a DOI from Crossref content negotiation."""
+    normalized = normalize_doi(doi)
+    if not normalized:
+        raise RuntimeError("DOI is empty")
+    url = f"https://api.crossref.org/works/{urllib.parse.quote(normalized)}/transform/application/x-bibtex"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "cli-anything-zotero/1.0 (mailto:cli-anything@local)",
+            "Accept": "application/x-bibtex",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace").strip()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Crossref BibTeX fetch failed for {normalized}: HTTP {exc.code} {detail}") from exc
+    except Exception as exc:
+        raise RuntimeError(f"Crossref BibTeX fetch failed for {normalized}: {exc}") from exc
+    if not body or "@" not in body:
+        raise RuntimeError(f"Crossref returned empty/invalid BibTeX for {normalized}")
+    return body
+
+
+def _import_bibtex_entries(
+    runtime: RuntimeContext,
+    content: str,
+    *,
+    source_path: Path,
+    collection_ref: str | None,
+    tags: list[str] | tuple[str, ...],
+    session: dict[str, Any] | None,
+    plans: list[dict[str, Any]],
+    connector_timeout: int,
+) -> dict[str, Any]:
+    entries = _split_bibtex_entries(content)
+    target = _resolve_target(runtime, collection_ref, session=session)
+    normalized_tags = _normalize_tags(list(tags))
+    all_items: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
+    attachment_results: list[dict[str, Any]] = []
+
+    for index, entry in enumerate(entries):
+        session_id = _session_id(f"import-file-part-{index}")
+        try:
+            imported = zotero_http.connector_import_text(
+                runtime.environment.port,
+                entry,
+                session_id=session_id,
+                content_type="text/x-bibtex",
+                timeout=connector_timeout,
+            )
+            zotero_http.connector_update_session(
+                runtime.environment.port,
+                session_id=session_id,
+                target=target["treeViewID"],
+                tags=normalized_tags,
+            )
+            # Attachment plans only apply to a single bulk import; skip on split path unless one entry.
+            if plans and len(entries) == 1:
+                _summary, part_results = _perform_attachment_upload(
+                    runtime,
+                    session_id=session_id,
+                    connector_items=imported,
+                    plans=plans,
+                )
+                attachment_results.extend(part_results)
+            all_items.extend(imported)
+        except Exception as exc:
+            failures.append({"index": index, "error": str(exc), "entry_preview": entry[:120]})
+
+    status = "success"
+    if failures and all_items:
+        status = "partial_success"
+    elif failures and not all_items:
+        status = "error"
+    return {
+        "action": "import_file",
+        "path": str(source_path),
+        "status": status,
+        "target": target,
+        "tags": normalized_tags,
+        "imported_count": len(all_items),
+        "items": all_items,
+        "failed_count": len(failures),
+        "failures": failures,
+        "split_bib": True,
+        "entry_count": len(entries),
+        "connector_timeout": connector_timeout,
+        "attachment_summary": _attachment_summary(attachment_results) if attachment_results else {
+            "planned_count": 0,
+            "created_count": 0,
+            "failed_count": 0,
+            "skipped_count": 0,
+        },
+        "attachment_results": attachment_results,
+    }
+
+
+def _application_import_payload(transport: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract application-level import result from a JS bridge transport envelope."""
+    if not isinstance(transport, dict):
+        return None
+    if not transport.get("ok"):
+        return {
+            "ok": False,
+            "code": "BRIDGE_ERROR",
+            "error": transport.get("error") or "JS bridge transport failed",
+            "error_name": transport.get("error_name"),
+            "error_stack": transport.get("error_stack"),
+        }
+    data = transport.get("data")
+    if data is None:
+        return {
+            "ok": False,
+            "code": "EMPTY_RESULT",
+            "error": "JS bridge returned empty success (data is null) — import did not complete",
+        }
+    if isinstance(data, dict):
+        # Structured payload from import_from_doi/pmid
+        if "ok" in data:
+            return data
+        return {"ok": True, "result": data}
+    if isinstance(data, str):
+        text = data.strip()
+        if text.startswith("OK:") or text.startswith("FOUND:"):
+            # Legacy string form: OK: imported Title (key: ABCDEFGH)
+            key = None
+            m = re.search(r"\(key:\s*([A-Z0-9]+)\)", text)
+            if m:
+                key = m.group(1)
+            return {"ok": True, "code": "IMPORTED", "message": text, "key": key}
+        if text.startswith("ERROR:") or text.startswith("NOT_FOUND") or text.startswith("TIMEOUT"):
+            return {"ok": False, "code": "LEGACY_ERROR", "error": text}
+        return {"ok": False, "code": "UNEXPECTED_RESULT", "error": text}
+    return {"ok": False, "code": "UNEXPECTED_RESULT", "error": f"Unexpected bridge data type: {type(data).__name__}"}
+
+
+def import_doi(
+    runtime: RuntimeContext,
+    bridge: Any,
+    doi: str,
+    *,
+    collection_key: str | None = None,
+    tags: list[str] | tuple[str, ...] = (),
+    session: dict[str, Any] | None = None,
+    dedupe: bool = True,
+    prefer_translator: bool = True,
+    connector_timeout: int = 120,
+    library_id: int = 1,
+) -> dict[str, Any]:
+    """Import a DOI robustly: optional dedupe → Zotero translator → Crossref BibTeX fallback."""
+    normalized = normalize_doi(doi)
+    if not normalized or not _DOI_RE.search(normalized):
+        return {
+            "action": "import_doi",
+            "status": "error",
+            "ok": False,
+            "code": "INVALID_DOI",
+            "DOI": doi,
+            "error": f"Invalid DOI: {doi!r}",
+        }
+
+    tag_list = list(tags) if tags else []
+    attempts: list[dict[str, Any]] = []
+
+    # 1) Dedupe by existing DOI in library
+    if dedupe and hasattr(bridge, "find_items_by_doi"):
+        existing_transport = bridge.find_items_by_doi(normalized, library_id=library_id)
+        existing_data = existing_transport.get("data") if existing_transport.get("ok") else None
+        if isinstance(existing_data, list) and existing_data:
+            item = existing_data[0]
+            key = item.get("key")
+            if key and collection_key and hasattr(bridge, "add_to_collection"):
+                try:
+                    bridge.add_to_collection(key, collection_key, library_id=library_id)
+                except Exception:
+                    pass
+            if key and tag_list and hasattr(bridge, "manage_tags"):
+                try:
+                    bridge.manage_tags(key, tag_list, [], library_id=library_id)
+                except Exception:
+                    pass
+            return {
+                "action": "import_doi",
+                "status": "already_exists",
+                "ok": True,
+                "code": "ALREADY_EXISTS",
+                "DOI": normalized,
+                "key": key,
+                "title": item.get("title"),
+                "source": "library-dedupe",
+                "existing_count": len(existing_data),
+                "attempts": attempts,
+            }
+
+    # 2) Zotero built-in DOI translator
+    translator_error = None
+    if prefer_translator and hasattr(bridge, "import_from_doi"):
+        transport = bridge.import_from_doi(
+            normalized,
+            collection_key=collection_key,
+            tags=tag_list or None,
+            library_id=library_id,
+        )
+        app = _application_import_payload(transport) or {
+            "ok": False,
+            "code": "BRIDGE_ERROR",
+            "error": "translator import returned no payload",
+        }
+        attempts.append({"step": "zotero-translator", **{k: app.get(k) for k in ("ok", "code", "error", "key")}})
+        if app.get("ok") and app.get("key"):
+            return {
+                "action": "import_doi",
+                "status": "success",
+                "ok": True,
+                "code": app.get("code") or "IMPORTED",
+                "DOI": normalized,
+                "key": app.get("key"),
+                "title": app.get("title"),
+                "source": app.get("source") or "zotero-translator",
+                "attempts": attempts,
+            }
+        # Also accept ok with key missing but message (legacy)
+        if app.get("ok") and not app.get("error"):
+            return {
+                "action": "import_doi",
+                "status": "success",
+                "ok": True,
+                "code": app.get("code") or "IMPORTED",
+                "DOI": normalized,
+                "key": app.get("key"),
+                "title": app.get("title"),
+                "source": app.get("source") or "zotero-translator",
+                "message": app.get("message"),
+                "attempts": attempts,
+            }
+        translator_error = app.get("error") or app.get("code") or "translator failed"
+
+    # 3) Crossref BibTeX → connector import
+    try:
+        _require_connector(runtime)
+        bibtex = fetch_crossref_bibtex(normalized)
+        session_id = _session_id("import-doi-crossref")
+        imported = zotero_http.connector_import_text(
+            runtime.environment.port,
+            bibtex,
+            session_id=session_id,
+            content_type="text/x-bibtex",
+            timeout=connector_timeout,
+        )
+        target = _resolve_target(runtime, collection_key, session=session)
+        normalized_tags = _normalize_tags(tag_list)
+        zotero_http.connector_update_session(
+            runtime.environment.port,
+            session_id=session_id,
+            target=target["treeViewID"],
+            tags=normalized_tags,
+        )
+        item0 = imported[0] if imported else {}
+        key = item0.get("key")
+        attempts.append({"step": "crossref-bibtex", "ok": True, "key": key})
+        return {
+            "action": "import_doi",
+            "status": "success",
+            "ok": True,
+            "code": "IMPORTED",
+            "DOI": normalized,
+            "key": key,
+            "title": item0.get("title"),
+            "source": "crossref-bibtex",
+            "items": imported,
+            "target": target,
+            "tags": normalized_tags,
+            "translator_error": translator_error,
+            "attempts": attempts,
+        }
+    except Exception as exc:
+        attempts.append({"step": "crossref-bibtex", "ok": False, "error": str(exc)})
+        return {
+            "action": "import_doi",
+            "status": "error",
+            "ok": False,
+            "code": "IMPORT_FAILED",
+            "DOI": normalized,
+            "error": str(exc),
+            "translator_error": translator_error,
+            "attempts": attempts,
+        }
+

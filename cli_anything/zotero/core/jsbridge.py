@@ -33,6 +33,7 @@ import tempfile
 import urllib.error
 import urllib.request
 import warnings
+from typing import Any
 
 _DEFAULT_PORT = 23119
 _RESULT_FILE = os.path.join(tempfile.gettempdir(), "zotero-cli-result.json")
@@ -87,6 +88,26 @@ def _bridge_endpoint_active(port: int) -> bool:
         return False
 
 
+def _format_bridge_error(err: Any) -> str:
+    """Normalize bridge/plugin error payloads into a non-empty string."""
+    if err is None:
+        return "unknown bridge error"
+    if isinstance(err, str):
+        text = err.strip()
+        return text or "unknown bridge error"
+    if isinstance(err, dict):
+        for key in ("error", "message", "raw", "name"):
+            value = err.get(key)
+            if value:
+                return str(value)
+        try:
+            dumped = json.dumps(err, ensure_ascii=False)
+        except Exception:
+            dumped = str(err)
+        return dumped if dumped and dumped != "{}" else "unknown bridge error"
+    return str(err)
+
+
 def _execute_http(code: str, *, port: int, timeout: int = 30) -> dict:
     try:
         req = urllib.request.Request(
@@ -106,11 +127,27 @@ def _execute_http(code: str, *, port: int, timeout: int = 30) -> dict:
         body = e.read().decode("utf-8", errors="replace")
         try:
             err = json.loads(body)
-            return {"ok": False, "data": None, "error": err.get("error", body)}
         except json.JSONDecodeError:
-            return {"ok": False, "data": None, "error": body}
+            return {"ok": False, "data": None, "error": body or f"HTTP {e.code}"}
+        # Plugin may return {error, name, stack, raw} — keep structured fields
+        message = _format_bridge_error(err if isinstance(err, dict) else {"error": err})
+        payload: dict[str, Any] = {"ok": False, "data": None, "error": message}
+        if isinstance(err, dict):
+            if err.get("name"):
+                payload["error_name"] = err.get("name")
+            if err.get("stack"):
+                payload["error_stack"] = err.get("stack")
+            if err.get("raw") and err.get("raw") != message:
+                payload["error_raw"] = err.get("raw")
+        return payload
+    except TimeoutError as e:
+        return {"ok": False, "data": None, "error": f"timed out: {e}"}
     except Exception as e:
-        return {"ok": False, "data": None, "error": str(e)}
+        # urllib timeout often surfaces as URLError/timeout subclass
+        msg = str(e)
+        if "timed out" in msg.lower() or "timeout" in msg.lower():
+            return {"ok": False, "data": None, "error": f"timed out: {msg}"}
+        return {"ok": False, "data": None, "error": msg}
 
 
 def _execute_applescript(code: str, *, wait_seconds: int = 3, capture: bool = True) -> dict:
@@ -420,36 +457,104 @@ class JSBridgeClient:
         return " ".join(parts)
 
     def import_from_doi(self, doi: str, *, collection_key: str | None = None, tags: list[str] | None = None, library_id: int = 1) -> dict:
+        """Import by DOI via Zotero Translate.Search.
+
+        Returns a transport envelope ``{ok, data, error}``. On HTTP success,
+        ``data`` is a structured payload::
+
+            {ok, code?, key?, title?, DOI?, source?, error?}
+
+        Callers should inspect ``data.ok`` (application-level), not only transport ``ok``.
+        """
         safe_doi = doi.replace("'", "\\'")
         post_import_js = self._build_post_import_js(collection_key, tags, library_id)
         js = (
+            "try { "
             f"var translate = new Zotero.Translate.Search(); "
             f"translate.setIdentifier({{DOI: '{safe_doi}'}}); "
             f"var translators = await translate.getTranslators(); "
+            f"if (!translators || !translators.length) {{ "
+            f"  return {{ok:false, code:'NO_TRANSLATOR', error:'No DOI translators available for {safe_doi}', DOI:'{safe_doi}'}}; "
+            f"}} "
             f"translate.setTranslator(translators); "
             f"var items = await translate.translate({{libraryID: {library_id}}}); "
-            f"if (!items || !items.length) {{ return 'ERROR: no results for DOI {safe_doi}'; }} "
+            f"if (!items || !items.length) {{ "
+            f"  return {{ok:false, code:'TRANSLATOR_EMPTY', error:'No items returned from any translator for DOI {safe_doi}', DOI:'{safe_doi}'}}; "
+            f"}} "
             f"var item = items[0]; "
             f"{post_import_js} "
-            f"return 'OK: imported ' + item.getField('title').substring(0,60) + ' (key: ' + item.key + ')';"
+            f"return {{ok:true, code:'IMPORTED', key: item.key, title: item.getField('title'), DOI: item.getField('DOI') || '{safe_doi}', source:'zotero-translator'}}; "
+            "} catch (e) { "
+            "  return {ok:false, code:'TRANSLATOR_ERROR', error: (e && (e.message || e.toString && e.toString()) || String(e)), "
+            "          name: e && e.name || null, stack: e && e.stack ? String(e.stack).slice(0,500) : null}; "
+            "}"
         )
-        return self.execute_js(js, wait_seconds=30)
+        return self.execute_js(js, wait_seconds=45)
 
     def import_from_pmid(self, pmid: str, *, collection_key: str | None = None, tags: list[str] | None = None, library_id: int = 1) -> dict:
         safe_pmid = pmid.replace("'", "\\'")
         post_import_js = self._build_post_import_js(collection_key, tags, library_id)
         js = (
+            "try { "
             f"var translate = new Zotero.Translate.Search(); "
             f"translate.setIdentifier({{PMID: '{safe_pmid}'}}); "
             f"var translators = await translate.getTranslators(); "
+            f"if (!translators || !translators.length) {{ "
+            f"  return {{ok:false, code:'NO_TRANSLATOR', error:'No PMID translators available for {safe_pmid}', PMID:'{safe_pmid}'}}; "
+            f"}} "
             f"translate.setTranslator(translators); "
             f"var items = await translate.translate({{libraryID: {library_id}}}); "
-            f"if (!items || !items.length) {{ return 'ERROR: no results for PMID {safe_pmid}'; }} "
+            f"if (!items || !items.length) {{ "
+            f"  return {{ok:false, code:'TRANSLATOR_EMPTY', error:'No items returned from any translator for PMID {safe_pmid}', PMID:'{safe_pmid}'}}; "
+            f"}} "
             f"var item = items[0]; "
             f"{post_import_js} "
-            f"return 'OK: imported ' + item.getField('title').substring(0,60) + ' (key: ' + item.key + ')';"
+            f"return {{ok:true, code:'IMPORTED', key: item.key, title: item.getField('title'), DOI: item.getField('DOI') || '', source:'zotero-translator'}}; "
+            "} catch (e) { "
+            "  return {ok:false, code:'TRANSLATOR_ERROR', error: (e && (e.message || e.toString && e.toString()) || String(e)), "
+            "          name: e && e.name || null, stack: e && e.stack ? String(e.stack).slice(0,500) : null}; "
+            "}"
         )
-        return self.execute_js(js, wait_seconds=30)
+        return self.execute_js(js, wait_seconds=45)
+
+    def find_items_by_doi(self, doi: str, *, library_id: int = 1, limit: int = 20) -> dict:
+        """Search library items by DOI field (via Zotero.Search)."""
+        safe_doi = doi.replace("'", "\\'")
+        js = (
+            f"var s = new Zotero.Search(); "
+            f"s.libraryID = {library_id}; "
+            f"s.addCondition('DOI', 'is', '{safe_doi}'); "
+            f"var ids = await s.search(); "
+            f"var items = await Zotero.Items.getAsync(ids); "
+            f"return items.slice(0, {int(limit)}).filter(i => i.isRegularItem()).map(i => ({{"
+            f"key: i.key, title: i.getField('title'), DOI: i.getField('DOI'), "
+            f"date: i.getField('date')"
+            f"}}));"
+        )
+        return self.execute_js(js, wait_seconds=10)
+
+    def list_items_missing_pdf(self, collection_key: str, *, library_id: int = 1) -> dict:
+        """Return regular items in a collection that lack a PDF attachment."""
+        js = (
+            f"var c = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
+            f"if (!c) {{ return {{ok:false, error:'collection {collection_key} not found'}}; }} "
+            "var ids = c.getChildItems(true); "
+            "var items = ids.map(id => Zotero.Items.get(id)).filter(i => i && i.isRegularItem && i.isRegularItem()); "
+            "var missing = []; "
+            "for (var item of items) { "
+            "  var aids = item.getAttachments(); "
+            "  var hasPdf = false; "
+            "  for (var aid of aids) { "
+            "    var a = Zotero.Items.get(aid); "
+            "    if (a && a.attachmentContentType === 'application/pdf') { hasPdf = true; break; } "
+            "  } "
+            "  if (!hasPdf) { "
+            "    missing.push({key: item.key, title: item.getField('title'), DOI: item.getField('DOI') || ''}); "
+            "  } "
+            "} "
+            "return {ok:true, total: items.length, missing: missing, missing_count: missing.length};"
+        )
+        return self.execute_js(js, wait_seconds=15)
 
     # ── Search operations ─────────────────────────────────────────
 
@@ -585,18 +690,93 @@ class JSBridgeClient:
         )
         return self.execute_js(js, wait_seconds=8)
 
-    def find_pdfs_in_collection(self, collection_key: str, *, library_id: int = 1) -> dict:
-        js = (
-            f"var c = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
-            f"if (!c) {{ return 'ERROR: collection {collection_key} not found'; }} "
-            "var ids = c.getChildItems(true); "
-            "var items = ids.map(id => Zotero.Items.get(id)).filter(i => i && !i.isAttachment() && !i.isNote()); "
-            "var noPDF = items.filter(i => { var a = i.getAttachments(); return !a.some(id => { var x = Zotero.Items.get(id); return x && x.attachmentContentType === 'application/pdf'; }); }); "
-            "var r = []; "
-            "for (var i of noPDF) { try { var a = await Zotero.Attachments.addAvailablePDF(i); r.push(i.getField('title').substring(0,50) + ': ' + (a ? 'FOUND' : 'not found')); } catch(e) { r.push(i.getField('title').substring(0,50) + ': ERROR'); } } "
-            "return {checked: noPDF.length, found: r.filter(x=>x.includes('FOUND')).length, details: r};"
-        )
-        return self.execute_js(js, wait_seconds=120)
+    def find_pdfs_in_collection(
+        self,
+        collection_key: str,
+        *,
+        library_id: int = 1,
+        timeout_per_item: int = 45,
+        limit: int | None = None,
+    ) -> dict:
+        """Find PDFs for items missing attachments, one item at a time.
+
+        Avoids a single long-lived JS call that times out on larger collections.
+        Returns a transport envelope whose ``data`` is a progress summary.
+        """
+        listed = self.list_items_missing_pdf(collection_key, library_id=library_id)
+        if not listed.get("ok"):
+            return listed
+        payload = listed.get("data")
+        if not isinstance(payload, dict) or payload.get("ok") is False:
+            err = None
+            if isinstance(payload, dict):
+                err = payload.get("error")
+            return {
+                "ok": False,
+                "data": None,
+                "error": err or listed.get("error") or "failed to list items missing PDFs",
+            }
+        missing = list(payload.get("missing") or [])
+        if limit is not None:
+            missing = missing[: max(0, int(limit))]
+
+        details: list[dict[str, Any]] = []
+        found = 0
+        for entry in missing:
+            key = entry.get("key")
+            title = (entry.get("title") or "")[:60]
+            if not key:
+                details.append({"key": None, "title": title, "status": "ERROR", "error": "missing item key"})
+                continue
+            result = self.find_pdf(key, library_id=library_id, timeout=timeout_per_item)
+            status = "ERROR"
+            message = None
+            att_key = None
+            if result.get("ok"):
+                data = result.get("data")
+                text = data if isinstance(data, str) else str(data)
+                if isinstance(text, str) and text.startswith("FOUND:"):
+                    status = "FOUND"
+                    found += 1
+                    att_key = text.split("FOUND:", 1)[-1].strip()
+                elif isinstance(text, str) and text.startswith("NOT_FOUND"):
+                    status = "NOT_FOUND"
+                    message = text
+                elif isinstance(text, str) and text.startswith("TIMEOUT"):
+                    status = "TIMEOUT"
+                    message = text
+                else:
+                    status = "UNKNOWN"
+                    message = text
+            else:
+                message = result.get("error") or "find_pdf failed"
+                if message and "timed out" in str(message).lower():
+                    status = "TIMEOUT"
+            details.append(
+                {
+                    "key": key,
+                    "title": title,
+                    "DOI": entry.get("DOI") or "",
+                    "status": status,
+                    "attachment_key": att_key,
+                    "message": message,
+                }
+            )
+
+        summary = {
+            "ok": True,
+            "collection": collection_key,
+            "total_in_collection": payload.get("total"),
+            "checked": len(missing),
+            "found": found,
+            "not_found": sum(1 for d in details if d["status"] == "NOT_FOUND"),
+            "timeouts": sum(1 for d in details if d["status"] == "TIMEOUT"),
+            "errors": sum(1 for d in details if d["status"] == "ERROR"),
+            "details": details,
+            "strategy": "per-item",
+            "timeout_per_item": timeout_per_item,
+        }
+        return {"ok": True, "data": summary, "error": None}
 
     # ── Misc ──────────────────────────────────────────────────────
 

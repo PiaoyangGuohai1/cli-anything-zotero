@@ -284,13 +284,34 @@ def emit(ctx: click.Context | None, data: Any, *, message: str = "") -> None:
     click.echo(_safe_text_for_stdout(str(data)))
 
 
-def emit_js(ctx: click.Context | None, result: dict) -> int:
+def emit_js(ctx: click.Context | None, result: dict, *, require_data: bool = False) -> int:
     """Emit a JS bridge result. Outputs result['data'] if available, else the full dict.
-    Returns exit code (0=ok, 1=error)."""
+
+    Returns exit code (0=ok, 1=error).
+
+    When ``require_data`` is True, a transport-level success with ``data is None``
+    is treated as failure. This prevents silent false success for import-like
+    operations when the bridge/plugin returns an empty payload.
+    """
     if not result.get("ok"):
         emit(ctx, result)
         return 1
     data = result.get("data")
+    if data is None and require_data:
+        emit(
+            ctx,
+            {
+                "ok": False,
+                "data": None,
+                "error": "JS bridge returned empty success (data is null)",
+                "code": "EMPTY_RESULT",
+            },
+        )
+        return 1
+    # Application-level structured failure nested in transport success
+    if isinstance(data, dict) and data.get("ok") is False:
+        emit(ctx, data)
+        return 1
     if data is not None:
         emit(ctx, data)
     else:
@@ -324,7 +345,12 @@ def _normalize_session_library(runtime: discovery.RuntimeContext, library_ref: s
 
 
 def _import_exit_code(payload: dict[str, Any]) -> int:
-    return 1 if payload.get("status") == "partial_success" else 0
+    status = payload.get("status")
+    if status in {"partial_success", "error", "failed"}:
+        return 1
+    if payload.get("ok") is False:
+        return 1
+    return 0
 
 
 @click.group(
@@ -722,11 +748,26 @@ def collection_create_command(
 
 @collection.command("find-pdfs")
 @click.argument("collection_key")
+@click.option("--timeout-per-item", default=45, show_default=True, type=int, help="Seconds to wait for each item's PDF lookup.")
+@click.option("--limit", default=None, type=int, help="Only process the first N items missing PDFs.")
 @click.pass_context
-def collection_find_pdfs_command(ctx: click.Context, collection_key: str) -> int:
-    """Find available PDFs for all items missing PDFs in a collection (via JS bridge)."""
-    result = current_bridge(ctx).find_pdfs_in_collection(collection_key)
-    return emit_js(ctx, result)
+def collection_find_pdfs_command(
+    ctx: click.Context,
+    collection_key: str,
+    timeout_per_item: int,
+    limit: int | None,
+) -> int:
+    """Find available PDFs for items missing PDFs (per-item, via JS bridge).
+
+    Processes one item at a time so large collections do not hit a single
+    long-lived bridge timeout.
+    """
+    result = current_bridge(ctx).find_pdfs_in_collection(
+        collection_key,
+        timeout_per_item=timeout_per_item,
+        limit=limit,
+    )
+    return emit_js(ctx, result, require_data=True)
 
 
 @collection.command("stats")
@@ -1593,6 +1634,8 @@ def import_group() -> None:
 @click.option("--attachments-manifest", default=None, help="Optional JSON manifest describing attachments for imported records.")
 @click.option("--attachment-delay-ms", default=0, show_default=True, type=int, help="Default delay before each URL attachment download.")
 @click.option("--attachment-timeout", default=60, show_default=True, type=int, help="Default timeout in seconds for attachment download/upload.")
+@click.option("--connector-timeout", default=120, show_default=True, type=int, help="Timeout in seconds for connector/import HTTP calls.")
+@click.option("--split-bib/--no-split-bib", default=True, show_default=True, help="Auto-split multi-entry BibTeX into per-entry imports.")
 @click.pass_context
 def import_file_command(
     ctx: click.Context,
@@ -1602,6 +1645,8 @@ def import_file_command(
     attachments_manifest: str | None,
     attachment_delay_ms: int,
     attachment_timeout: int,
+    connector_timeout: int,
+    split_bib: bool,
 ) -> int:
     payload = imports.import_file(
         current_runtime(ctx),
@@ -1612,6 +1657,8 @@ def import_file_command(
         attachments_manifest=attachments_manifest,
         attachment_delay_ms=attachment_delay_ms,
         attachment_timeout=attachment_timeout,
+        connector_timeout=connector_timeout,
+        split_bib=split_bib,
     )
     emit(ctx, payload)
     return _import_exit_code(payload)
@@ -1649,11 +1696,42 @@ def import_json_command(
 @click.argument("doi")
 @click.option("--collection", "collection_key", default=None, help="Collection key to add the imported item to.")
 @click.option("--tag", "tags", multiple=True, help="Tag to apply after import. Repeatable.")
+@click.option("--dedupe/--no-dedupe", default=True, show_default=True, help="Reuse an existing library item with the same DOI when present.")
+@click.option("--translator/--no-translator", "prefer_translator", default=True, show_default=True, help="Try Zotero DOI translator before Crossref BibTeX fallback.")
+@click.option("--connector-timeout", default=120, show_default=True, type=int, help="Timeout for Crossref→connector fallback import.")
 @click.pass_context
-def import_doi_command(ctx: click.Context, doi: str, collection_key: str | None, tags: tuple[str, ...]) -> int:
-    """Import an item by DOI using Zotero's built-in translator (via JS bridge)."""
-    result = current_bridge(ctx).import_from_doi(doi, collection_key=collection_key, tags=list(tags) if tags else None)
-    return emit_js(ctx, result)
+def import_doi_command(
+    ctx: click.Context,
+    doi: str,
+    collection_key: str | None,
+    tags: tuple[str, ...],
+    dedupe: bool,
+    prefer_translator: bool,
+    connector_timeout: int,
+) -> int:
+    """Import an item by DOI.
+
+    Strategy:
+      1) optional library DOI dedupe
+      2) Zotero built-in DOI translator (JS bridge)
+      3) Crossref BibTeX → connector import fallback
+
+    Agent-recommended path when translator network is flaky.
+    """
+    payload = imports.import_doi(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        doi,
+        collection_key=collection_key,
+        tags=list(tags),
+        session=current_session(),
+        dedupe=dedupe,
+        prefer_translator=prefer_translator,
+        connector_timeout=connector_timeout,
+        library_id=int(current_session().get("current_library", 1)),
+    )
+    emit(ctx, payload)
+    return 0 if payload.get("ok") else 1
 
 
 @import_group.command("pmid")
@@ -1664,7 +1742,7 @@ def import_doi_command(ctx: click.Context, doi: str, collection_key: str | None,
 def import_pmid_command(ctx: click.Context, pmid: str, collection_key: str | None, tags: tuple[str, ...]) -> int:
     """Import an item by PMID using Zotero's built-in translator (via JS bridge)."""
     result = current_bridge(ctx).import_from_pmid(pmid, collection_key=collection_key, tags=list(tags) if tags else None)
-    return emit_js(ctx, result)
+    return emit_js(ctx, result, require_data=True)
 
 
 @cli.group()

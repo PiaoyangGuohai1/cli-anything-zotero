@@ -68,7 +68,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `collection items <ref>` | List items in collection | SQLite |
 | `collection create <name>` | Create new collection | SQLite (experimental) |
 | `collection stats <key>` | Statistics (item count, PDF coverage, year/journal distribution) | JS Bridge |
-| `collection find-pdfs <key>` | Batch "Find Available PDF" for items missing PDFs | JS Bridge |
+| `collection find-pdfs <key> [--timeout-per-item N] [--limit N]` | Find Available PDFs per missing item (avoids bulk timeout) | JS Bridge |
 | `collection remove-item <col_key> <item_key>` | Remove item from collection (keeps item) | JS Bridge |
 | `collection rename <key> --name/--parent` | Rename or move collection | JS Bridge |
 | `collection delete <key> --confirm` | Delete collection | JS Bridge |
@@ -78,9 +78,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 
 | Command | Description | Backend |
 |---------|-------------|---------|
-| `import doi <doi> [--tag T] [--collection K]` | Import by DOI with auto-metadata | JS Bridge |
+| `import doi <doi> [--tag T] [--collection K] [--dedupe/--no-dedupe] [--translator/--no-translator]` | Import by DOI (translator → Crossref BibTeX fallback) | JS Bridge + Connector |
 | `import pmid <pmid> [--tag T] [--collection K]` | Import by PMID with auto-metadata | JS Bridge |
-| `import file <path> [--collection K]` | Import from RIS/BibTeX file | Connector |
+| `import file <path> [--collection K] [--connector-timeout N] [--split-bib/--no-split-bib]` | Import from RIS/BibTeX file (multi-entry BibTeX auto-splits) | Connector |
 | `import json <path> [--collection K]` | Import from JSON | Connector |
 
 ## Other Commands

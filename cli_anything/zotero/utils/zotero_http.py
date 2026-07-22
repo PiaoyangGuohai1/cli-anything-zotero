@@ -107,7 +107,7 @@ def connector_import_text(
     *,
     session_id: str | None = None,
     content_type: str = "text/plain",
-    timeout: int = 20,
+    timeout: int = 120,
 ) -> list[dict[str, Any]]:
     params = {"session": session_id} if session_id else None
     response = request(
