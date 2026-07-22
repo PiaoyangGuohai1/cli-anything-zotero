@@ -78,7 +78,7 @@ class CliEntrypointTests(unittest.TestCase):
     def test_version_option_reports_package_version(self):
         result = self.run_cli(["--version"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("1.1.0", result.stdout)
+        self.assertIn("1.2.0", result.stdout)
 
     def test_dispatch_uses_requested_prog_name(self):
         result = dispatch(["--help"], prog_name="zotero-cli")

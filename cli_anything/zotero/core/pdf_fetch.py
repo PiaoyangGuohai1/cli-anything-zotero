@@ -25,7 +25,7 @@ from cli_anything.zotero.utils import zotero_sqlite
 
 _ARXIV_RE = re.compile(r"(?:arxiv(?:\.org)?/(?:abs|pdf)/|arxiv:)?(\d{4}\.\d{4,5})(v\d+)?", re.I)
 _DEFAULT_SOURCES = ("zotero", "unpaywall", "epmc", "biorxiv", "arxiv")
-_USER_AGENT = "cli-anything-zotero/1.1 (mailto:cli-anything@local; research agent)"
+_USER_AGENT = "cli-anything-zotero/1.2 (mailto:cli-anything@local; research agent)"
 
 
 def parse_sources(value: str | None) -> list[str]:

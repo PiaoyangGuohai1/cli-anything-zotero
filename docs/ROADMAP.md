@@ -1,7 +1,7 @@
 # Roadmap — cli-anything-zotero
 
 Last updated: 2026-07-22  
-Current release: **v1.1.0** (CLI Bridge plugin **1.2.0**)
+Current release: **v1.2.0** (CLI Bridge plugin **1.2.0**)
 
 ## Positioning
 
@@ -17,6 +17,7 @@ Current release: **v1.1.0** (CLI Bridge plugin **1.2.0**)
 |---------|--------|
 | ≤1.0.0 | CLI-first; MCP frozen at 0.9.5 |
 | **1.1.0** | DOI: dedupe → translator → Crossref BibTeX; bridge error serialization; per-item `find-pdfs`; BibTeX split; longer connector timeout |
+| **1.2.0** | Agent doctor + result contract; `add` ingest; PDF cascade; URL/CSL; duplicates/merge preview; `docx cite` one-shot |
 
 ## 1.2.0 — Agent contract (in progress → nearly done)
 

@@ -281,4 +281,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-1.1.0+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.
+1.2.0+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.

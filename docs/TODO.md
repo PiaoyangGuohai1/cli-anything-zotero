@@ -64,7 +64,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 - [ ] Optional audit log for privileged `js` / write ops
 - [ ] merge preview offline SQLite fallback when bridge down
-- [ ] Package release v1.2.0 / v1.3.0
+- [x] Package release v1.2.0
 
 ---
 
