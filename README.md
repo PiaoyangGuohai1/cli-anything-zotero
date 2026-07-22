@@ -142,6 +142,9 @@ zotero-cli --json add bibtex ./refs.bib --collection COLLECTION_KEY
 zotero-cli import doi "10.1038/s41586-024-07871-6" --no-translator
 zotero-cli --json item fetch-pdf ITEM_KEY --sources zotero,unpaywall,arxiv
 zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progress
+
+# DOCX one-shot citations
+zotero-cli --json docx cite draft.docx --output draft-cited.docx --mode auto --force
 ```
 
 **Read & Export**

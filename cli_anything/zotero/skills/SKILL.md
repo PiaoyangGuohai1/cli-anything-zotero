@@ -120,6 +120,9 @@ zotero-cli --json docx validate-placeholders manuscript.docx
 # Static final DOCX: replace placeholders with ordinary text citations and bibliography
 zotero-cli --json docx render-citations manuscript.docx --output manuscript-static.docx --force
 
+# Preferred one-shot pipeline (auto: dynamic if LibreOffice ready, else static)
+zotero-cli --json docx cite manuscript.docx --output manuscript-cited.docx --mode auto --force
+
 # Dynamic final DOCX: use Zotero/LibreOffice fields when the user needs Refresh
 zotero-cli --json docx doctor
 zotero-cli --json docx insert-citations manuscript.docx --output manuscript-zotero.docx --force
@@ -130,13 +133,13 @@ When the user provides a DOCX draft that contains citations, follow this explici
 
 - Ask for intent if mode is unclear:
   - "Do you want static references (final text now), or dynamic references (refreshable in Zotero/LibreOffice)?"
-- If static is requested:
-  - `zotero-cli --json docx validate-placeholders <docx>`
-  - `zotero-cli --json docx render-citations <docx> --output <final.docx> --force`
-- If dynamic is requested or user mentions later editing/refresh:
-  - `zotero-cli --json docx validate-placeholders <docx>`
-  - `zotero-cli --json docx doctor`
-  - `zotero-cli --json docx insert-citations <docx> --output <final.docx> --force`
+- Preferred default for agents:
+  - `zotero-cli --json docx cite <docx> --output <final.docx> --mode auto --force`
+- If static is explicitly requested:
+  - `zotero-cli --json docx cite <docx> --output <final.docx> --mode static --force`
+- If dynamic is explicitly requested or user mentions later editing/refresh:
+  - `zotero-cli --json docx cite <docx> --output <final.docx> --mode dynamic --force`
+  - or lower-level: validate → doctor → insert-citations
 - If dynamic conversion returns environment errors:
   - do not retry blindly
   - report exact error context from `docx doctor`/`docx zoterify-probe`

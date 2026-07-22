@@ -106,6 +106,135 @@ def find_duplicates(
     )
 
 
+def _preview_js(keep_key: str, merge_keys: list[str], library_id: int) -> str:
+    keys_json = json_dumps_js([keep_key, *merge_keys])
+    return (
+        "function summarize(item) { "
+        "  if (!item) return null; "
+        "  var tags = (item.getTags() || []).map(t => (t && (t.tag || t.name)) || String(t)); "
+        "  var cols = (item.getCollections() || []).map(id => { "
+        "    var c = Zotero.Collections.get(id); "
+        "    return c ? {id: c.id, key: c.key, name: c.name} : {id: id}; "
+        "  }); "
+        "  var attachments = (item.getAttachments() || []).map(id => { "
+        "    var a = Zotero.Items.get(id); "
+        "    if (!a) return {id: id}; "
+        "    return {key: a.key, title: a.getField('title'), contentType: a.attachmentContentType || '', "
+        "            filename: a.attachmentFilename || '', linkMode: a.attachmentLinkMode}; "
+        "  }); "
+        "  var notes = ((item.getNotes && item.getNotes()) || []).map(id => { "
+        "    var n = Zotero.Items.get(id); "
+        "    if (!n) return {id: id}; "
+        "    var title = ''; try { title = n.getNoteTitle ? n.getNoteTitle() : n.getField('title'); } catch (e) {} "
+        "    return {key: n.key, title: (title || '').substring(0, 80)}; "
+        "  }); "
+        "  return {key: item.key, title: item.getField('title'), DOI: item.getField('DOI') || '', "
+        "          date: item.getField('date') || '', itemType: item.itemType, "
+        "          tags: tags, collections: cols, attachments: attachments, notes: notes, "
+        "          nAttachments: attachments.length, nNotes: notes.length, nTags: tags.length, nCollections: cols.length}; "
+        "} "
+        f"var keys = {keys_json}; "
+        f"var keep = Zotero.Items.getByLibraryAndKey({library_id}, keys[0]); "
+        "if (!keep) { return {ok:false, error:'keep item not found', keep: keys[0]}; } "
+        "var keepSum = summarize(keep); "
+        "var others = []; var missing = []; "
+        "for (var i = 1; i < keys.length; i++) { "
+        f"  var it = Zotero.Items.getByLibraryAndKey({library_id}, keys[i]); "
+        "  if (!it) { missing.push(keys[i]); continue; } "
+        "  others.push(summarize(it)); "
+        "} "
+        "var keepTagSet = new Set(keepSum.tags || []); "
+        "var keepColSet = new Set((keepSum.collections || []).map(c => c.key || String(c.id))); "
+        "var tagsToAdd = []; var colsToAdd = []; var attachmentsToMove = 0; var notesToMove = 0; "
+        "for (var o of others) { "
+        "  attachmentsToMove += (o.nAttachments || 0); "
+        "  notesToMove += (o.nNotes || 0); "
+        "  for (var t of (o.tags || [])) { if (!keepTagSet.has(t)) { tagsToAdd.push(t); keepTagSet.add(t); } } "
+        "  for (var c of (o.collections || [])) { "
+        "    var ck = c.key || String(c.id); "
+        "    if (!keepColSet.has(ck)) { colsToAdd.push(c); keepColSet.add(ck); } "
+        "  } "
+        "} "
+        "return {ok:true, keep: keepSum, others: others, missing: missing, "
+        "        will: {move_attachments: attachmentsToMove, move_notes: notesToMove, "
+        "               add_tags: tagsToAdd, add_collections: colsToAdd, trash_items: others.map(o => o.key)}}; "
+    )
+
+
+def json_dumps_js(value: Any) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False)
+
+
+def preview_merge(
+    bridge: Any,
+    keep_key: str,
+    merge_keys: list[str],
+    *,
+    library_id: int = 1,
+) -> dict[str, Any]:
+    """Return a detailed merge preview without modifying the library."""
+    merge_keys = [k for k in merge_keys if k and k != keep_key]
+    if not keep_key or not merge_keys:
+        return result_payload(
+            action="item_merge_preview",
+            ok=False,
+            status="error",
+            code="INVALID_ARGS",
+            error="keep key and at least one other key are required",
+        )
+    transport = bridge.execute_js(_preview_js(keep_key, merge_keys, library_id), wait_seconds=20)
+    if not transport.get("ok"):
+        return result_payload(
+            action="item_merge_preview",
+            ok=False,
+            status="error",
+            code="BRIDGE_ERROR",
+            error=transport.get("error") or "bridge preview failed",
+            keep=keep_key,
+            merge=merge_keys,
+        )
+    data = transport.get("data")
+    if not isinstance(data, dict) or not data.get("ok"):
+        return result_payload(
+            action="item_merge_preview",
+            ok=False,
+            status="error",
+            code="PREVIEW_FAILED",
+            error=(data or {}).get("error") if isinstance(data, dict) else "preview failed",
+            keep=keep_key,
+            merge=merge_keys,
+            result=data,
+        )
+    will = data.get("will") or {}
+    return result_payload(
+        action="item_merge_preview",
+        ok=True,
+        status="dry_run",
+        code="DRY_RUN",
+        keep=data.get("keep"),
+        others=data.get("others") or [],
+        missing=data.get("missing") or [],
+        will=will,
+        summary={
+            "trash_count": len(will.get("trash_items") or []),
+            "move_attachments": will.get("move_attachments") or 0,
+            "move_notes": will.get("move_notes") or 0,
+            "add_tags": will.get("add_tags") or [],
+            "add_collections": [c.get("name") or c.get("key") for c in (will.get("add_collections") or [])],
+        },
+        message=(
+            f"Would trash {len(will.get('trash_items') or [])} item(s) into keep={keep_key}: "
+            f"move {will.get('move_attachments') or 0} attachment(s), "
+            f"{will.get('move_notes') or 0} note(s); "
+            f"add {len(will.get('add_tags') or [])} tag(s), "
+            f"{len(will.get('add_collections') or [])} collection(s). "
+            "Re-run with --confirm to apply."
+        ),
+    )
+
+
 def merge_items(
     bridge: Any,
     keep_key: str,
@@ -124,18 +253,26 @@ def merge_items(
             error="keep key and at least one other key are required",
         )
 
-    plan = {"keep": keep_key, "merge": merge_keys, "dry_run": dry_run}
+    preview = preview_merge(bridge, keep_key, merge_keys, library_id=library_id)
     if dry_run:
+        # Keep action name stable for CLI consumers
+        preview["action"] = "item_merge"
+        preview["plan"] = {"keep": keep_key, "merge": merge_keys, "dry_run": True}
+        preview["dry_run"] = True
+        return preview
+    if not preview.get("ok"):
+        preview["action"] = "item_merge"
+        preview["dry_run"] = False
+        return preview
+    if preview.get("missing"):
         return result_payload(
             action="item_merge",
-            ok=True,
-            status="dry_run",
-            code="DRY_RUN",
-            plan=plan,
-            message=(
-                f"Would merge {merge_keys} into {keep_key}: move attachments/notes, "
-                "union tags/collections, trash merged items. Re-run with --confirm."
-            ),
+            ok=False,
+            status="error",
+            code="ITEMS_MISSING",
+            error=f"Missing items: {preview.get('missing')}",
+            preview=preview,
+            dry_run=False,
         )
 
     results = []
@@ -181,6 +318,7 @@ def merge_items(
         keep=keep_key,
         merge=merge_keys,
         dry_run=False,
+        preview_summary=preview.get("summary"),
         results=results,
         succeeded=succeeded,
         failed=len(results) - succeeded,

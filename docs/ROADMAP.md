@@ -52,11 +52,12 @@ Theme: **keep the library clean under agent churn**.
 - [ ] Better partial/resume for multi-entry imports
 - [ ] Safer merge previews (list attachments/tags before confirm)
 
-## 1.5.0 — Writing chain & polish
+## 1.5.0 — Writing chain & polish (started)
 
 Theme: **unique DOCX path + agent packaging**.
 
-- [ ] DOCX one-shot: doctor → validate → zoterify (clear errors)
+- [x] DOCX one-shot: `docx cite` (validate → doctor → static/dynamic)
+- [x] merge dry-run rich preview (attachments/tags/collections)
 - [ ] Optional audit log for privileged `js` / write ops
 - [ ] First-class Agent Skill refresh (retry chains, when to use which import)
 - [ ] Optional degraded mode when Zotero is closed (read-only Web API; never replace bridge as primary)

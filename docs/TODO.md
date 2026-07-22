@@ -6,7 +6,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Now — v1.4 hygiene + 1.3 tail
+## Now — v1.5 DOCX + merge polish
+
+- [x] `item merge` rich dry-run preview (attachments/tags/collections)
+- [x] `docx cite` one-shot pipeline (`auto|static|dynamic`)
+- [x] Live smoke: merge preview + docx cite static
+- [x] Skill/docs for docx cite
+
+## Done — v1.4 hygiene + 1.3 tail
 
 - [x] `add url`
 - [x] CSL-JSON / Crossref auto-import in `import json` / `add file`
@@ -53,10 +60,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Later — v1.5 (queued)
+## Later
 
-- [ ] DOCX polish + audit log
-- [ ] merge dry-run richer preview
+- [ ] Optional audit log for privileged `js` / write ops
+- [ ] merge preview offline SQLite fallback when bridge down
+- [ ] Package release v1.2.0 / v1.3.0
 
 ---
 

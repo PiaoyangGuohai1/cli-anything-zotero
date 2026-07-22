@@ -1735,6 +1735,57 @@ def docx_render_citations_command(
     return 0
 
 
+@docx.command("cite")
+@click.argument("path")
+@click.option("--output", required=True, type=click.Path(dir_okay=False, path_type=Path), help="Output .docx path.")
+@click.option(
+    "--mode",
+    type=click.Choice(["auto", "static", "dynamic"]),
+    default="auto",
+    show_default=True,
+    help="auto=dynamic if LibreOffice/Zotero ready else static.",
+)
+@click.option("--style", default=docx_static.DEFAULT_STYLE, show_default=True, help="CSL style ID or short style name.")
+@click.option("--locale", default=docx_static.DEFAULT_LOCALE, show_default=True, help="CSL locale.")
+@click.option("--bibliography", type=click.Choice(["auto", "none"]), default="auto", show_default=True)
+@click.option("--force", is_flag=True, help="Overwrite the output file if it already exists.")
+@click.option("--open/--no-open", "open_document", default=True, show_default=True, help="Open LibreOffice for dynamic mode.")
+@click.option("--debug-dir", type=click.Path(file_okay=False, path_type=Path), help="Optional debug artifacts dir (dynamic mode).")
+@click.pass_context
+def docx_cite_command(
+    ctx: click.Context,
+    path: str,
+    output: Path,
+    mode: str,
+    style: str,
+    locale: str,
+    bibliography: str,
+    force: bool,
+    open_document: bool,
+    debug_dir: Path | None,
+) -> int:
+    """One-shot DOCX citation pipeline: validate → doctor → static/dynamic convert."""
+    from cli_anything.zotero.core import docx_pipeline
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = docx_pipeline.cite_document(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        path,
+        output,
+        mode=mode,
+        style=style,
+        locale=locale,
+        bibliography=bibliography,
+        session=current_session(),
+        force=force,
+        open_document=open_document,
+        debug_dir=debug_dir,
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
 def _run_docx_zoterify(
     ctx: click.Context,
     path: str,

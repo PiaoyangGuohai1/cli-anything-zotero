@@ -1579,16 +1579,64 @@ class ImportCoreTests(unittest.TestCase):
         self.assertEqual(fmt, "csl-json")
         self.assertEqual(items[0]["title"], "Hello CSL")
 
-    def test_merge_dry_run(self):
+    def test_merge_dry_run_preview(self):
         from cli_anything.zotero.core import hygiene
 
+        seen = {"code": ""}
+
         class FakeBridge:
-            def execute_js(self, *args, **kwargs):
-                raise AssertionError("dry-run must not execute merge js")
+            def execute_js(self, code, **kwargs):
+                # dry-run uses preview JS, not trash JS
+                seen["code"] = code
+                return {
+                    "ok": True,
+                    "data": {
+                        "ok": True,
+                        "keep": {"key": "KEEPKEY1", "title": "Keep", "tags": ["a"], "attachments": [], "notes": [], "collections": []},
+                        "others": [
+                            {
+                                "key": "OTHERKEY",
+                                "title": "Other",
+                                "tags": ["b"],
+                                "nAttachments": 1,
+                                "nNotes": 0,
+                                "attachments": [{"key": "ATT1", "title": "pdf"}],
+                                "notes": [],
+                                "collections": [{"key": "C1", "name": "Col"}],
+                            }
+                        ],
+                        "missing": [],
+                        "will": {
+                            "move_attachments": 1,
+                            "move_notes": 0,
+                            "add_tags": ["b"],
+                            "add_collections": [{"key": "C1", "name": "Col"}],
+                            "trash_items": ["OTHERKEY"],
+                        },
+                    },
+                    "error": None,
+                }
 
         payload = hygiene.merge_items(FakeBridge(), "KEEPKEY1", ["OTHERKEY"], dry_run=True)
+        self.assertIn("summarize", seen["code"])
+        self.assertNotIn("deleted = true", seen["code"])
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["status"], "dry_run")
+        self.assertEqual(payload["summary"]["move_attachments"], 1)
+        self.assertIn("b", payload["summary"]["add_tags"])
+
+    def test_docx_cite_rejects_bad_mode(self):
+        from cli_anything.zotero.core import docx_pipeline
+
+        payload = docx_pipeline.cite_document(
+            self.runtime,
+            object(),
+            "x.docx",
+            "y.docx",
+            mode="nope",
+        )
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "INVALID_MODE")
 
     def test_add_url_routes_doi(self):
         from cli_anything.zotero.core import add as add_mod
