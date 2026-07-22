@@ -78,20 +78,15 @@ zotero-cli --json item metrics ITEM_KEY
 ### Import Papers
 
 ```bash
-# DOI: library file/dedupe → Zotero translator → Crossref BibTeX fallback
-zotero-cli --json import doi "10.1038/s41586-024-07871-6" --tag "review" --collection COLLECTION_KEY
+# Preferred: unified add
+zotero-cli --json add doi "10.1038/s41586-024-07871-6" --tag "review" --collection COLLECTION_KEY --fetch-pdf
+zotero-cli --json add arxiv 2602.02093 --collection COLLECTION_KEY
+zotero-cli --json add file ./paper.pdf --collection COLLECTION_KEY
+zotero-cli --json add bibtex ./references.bib --collection COLLECTION_KEY
 
-# Force new copy even if DOI exists
-zotero-cli --json import doi "10.1038/s41586-024-07871-6" --if-exists duplicate
-
-# Skip Zotero translator (Crossref only)
-zotero-cli --json import doi "10.1038/s41586-024-07871-6" --no-translator
-
-# Import by PMID
+# Lower-level DOI import still available
+zotero-cli --json import doi "10.1038/s41586-024-07871-6" --if-exists file --no-translator
 zotero-cli import pmid "38551621" --tag "epidemiology"
-
-# Import from file (RIS, BibTeX; multi-entry BibTeX auto-splits)
-zotero-cli import file ./references.bib --collection COLLECTION_KEY
 ```
 
 ### Export & Citations
@@ -169,11 +164,14 @@ citations without specifying a mode, ask whether they want static citations
 # Attach a local PDF to an existing item
 zotero-cli item attach ITEM_KEY /path/to/paper.pdf
 
-# Trigger "Find Available PDF" for one item
-zotero-cli item find-pdf ITEM_KEY
+# Zotero-only find PDF
+zotero-cli --json item find-pdf ITEM_KEY
 
-# Batch find PDFs (per-item; avoids bulk timeout)
-zotero-cli --json collection find-pdfs COLLECTION_KEY --timeout-per-item 45 --limit 20
+# Cascade: Zotero → Unpaywall → EuropePMC → bioRxiv → arXiv
+zotero-cli --json item fetch-pdf ITEM_KEY --sources zotero,unpaywall,epmc,biorxiv,arxiv
+
+# Batch cascade for a collection (JSONL progress optional)
+zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progress
 ```
 
 ### Write Operations

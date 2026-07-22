@@ -32,6 +32,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `item attachments <ref>` | List attachments | SQLite |
 | `item notes <ref>` | List notes | SQLite |
 | `item file <ref>` | Get attachment file path | SQLite |
+| `item fetch-pdf <key> [--sources ...] [--force]` | Zotero find-pdf + OA cascade, then attach | JS Bridge + HTTP |
+| `item find-pdf <key>` | Zotero built-in Find Available PDF only | JS Bridge |
+| `item attach <key> <pdf>` | Attach local PDF | JS Bridge |
 | `item context <ref>` | Build LLM-ready context | SQLite |
 | `item export <ref> --format bibtex` | Export RIS/BibTeX/CSL JSON/CSV | Local API |
 | `item citation <ref>` | Render inline citation | Local API |
@@ -69,11 +72,21 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `collection items <ref>` | List items in collection (includes `DOI`, `hasPdf`, `date`) | SQLite |
 | `collection create <name>` | Create new collection | SQLite (experimental) |
 | `collection stats <key>` | Statistics (item count, PDF coverage, year/journal distribution) | JS Bridge |
-| `collection find-pdfs <key> [--timeout-per-item N] [--limit N]` | Find Available PDFs per missing item (avoids bulk timeout) | JS Bridge |
+| `collection find-pdfs <key> [--timeout-per-item N] [--limit N]` | Zotero Find Available PDF only (per item) | JS Bridge |
+| `collection fetch-pdfs <key> [--sources ...] [--limit N] [--jsonl-progress]` | Zotero + OA cascade for missing PDFs | JS Bridge + HTTP |
 | `collection remove-item <col_key> <item_key>` | Remove item from collection (keeps item) | JS Bridge |
 | `collection rename <key> --name/--parent` | Rename or move collection | JS Bridge |
 | `collection delete <key> --confirm` | Delete collection | JS Bridge |
 | `collection use-selected` | Use currently selected collection in Zotero GUI | Connector |
+
+## add -- Unified Ingest (preferred for agents)
+
+| Command | Description | Backend |
+|---------|-------------|---------|
+| `add doi <doi> [--collection K] [--tag T] [--if-exists ...] [--fetch-pdf]` | Import DOI; optional PDF cascade | Bridge + Connector + OA |
+| `add arxiv <id> [--collection K] [--tag T] [--fetch-pdf/--no-fetch-pdf]` | Import arXiv preprint (+ PDF by default) | Bridge + Connector + OA |
+| `add file <path> [--collection K] [--tag T]` | Bib/RIS/JSON import or PDF attach/import | Connector / Bridge |
+| `add bibtex <path> [--collection K] [--tag T]` | BibTeX file import | Connector |
 
 ## import -- Import Items
 

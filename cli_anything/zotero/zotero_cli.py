@@ -769,7 +769,8 @@ def collection_find_pdfs_command(
     """Find available PDFs for items missing PDFs (per-item, via JS bridge).
 
     Processes one item at a time so large collections do not hit a single
-    long-lived bridge timeout.
+    long-lived bridge timeout. For OA cascade beyond Zotero, use
+    ``collection fetch-pdfs``.
     """
     result = current_bridge(ctx).find_pdfs_in_collection(
         collection_key,
@@ -777,6 +778,57 @@ def collection_find_pdfs_command(
         limit=limit,
     )
     return emit_js(ctx, result, require_data=True)
+
+
+@collection.command("fetch-pdfs")
+@click.argument("collection_key")
+@click.option(
+    "--sources",
+    default="zotero,unpaywall,epmc,biorxiv,arxiv",
+    show_default=True,
+    help="Comma-separated cascade: zotero,unpaywall,epmc,biorxiv,arxiv",
+)
+@click.option("--limit", default=None, type=int, help="Only process the first N items missing PDFs.")
+@click.option("--zotero-timeout", default=45, show_default=True, type=int)
+@click.option("--download-timeout", default=45, show_default=True, type=int)
+@click.option("--jsonl-progress", is_flag=True, help="Print one JSON progress object per item to stdout.")
+@click.pass_context
+def collection_fetch_pdfs_command(
+    ctx: click.Context,
+    collection_key: str,
+    sources: str,
+    limit: int | None,
+    zotero_timeout: int,
+    download_timeout: int,
+    jsonl_progress: bool,
+) -> int:
+    """Fetch PDFs for items missing attachments using Zotero + OA cascade."""
+    from cli_anything.zotero.core import pdf_fetch
+    from cli_anything.zotero.core.results import exit_code_for
+
+    try:
+        source_list = pdf_fetch.parse_sources(sources)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    def _progress(row: dict) -> None:
+        if jsonl_progress:
+            click.echo(json.dumps(row, ensure_ascii=False))
+
+    payload = pdf_fetch.fetch_pdfs_for_collection(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        collection_key,
+        sources=source_list,
+        library_id=int(current_session().get("current_library", 1)),
+        limit=limit,
+        zotero_timeout=zotero_timeout,
+        download_timeout=download_timeout,
+        progress_callback=_progress if jsonl_progress else None,
+    )
+    # When streaming progress, still emit final summary as JSON object
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @collection.command("stats")
@@ -934,8 +986,23 @@ def item_file_command(ctx: click.Context, ref: str | None) -> int:
 @click.pass_context
 def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int:
     """Attach a local PDF file to an existing Zotero item (via JS bridge)."""
-    result = current_bridge(ctx).attach_pdf(item_key, pdf_path)
-    return emit_js(ctx, result)
+    from cli_anything.zotero.core.results import exit_code_for, result_payload
+
+    transport = current_bridge(ctx).attach_pdf(item_key, pdf_path)
+    data = transport.get("data")
+    ok = bool(transport.get("ok") and (not isinstance(data, str) or not data.startswith("ERROR")))
+    payload = result_payload(
+        action="item_attach",
+        ok=ok,
+        status="success" if ok else "error",
+        code="ATTACHED" if ok else "ATTACH_FAILED",
+        key=item_key,
+        path=str(pdf_path),
+        result=data,
+        error=None if ok else (transport.get("error") or str(data)),
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @item.command("find-pdf")
@@ -944,8 +1011,83 @@ def item_attach_command(ctx: click.Context, item_key: str, pdf_path: str) -> int
 @click.pass_context
 def item_find_pdf_command(ctx: click.Context, item_key: str, timeout: int) -> int:
     """Trigger Zotero's 'Find Available PDF' for a single item (via JS bridge)."""
-    result = current_bridge(ctx).find_pdf(item_key, timeout=timeout)
-    return emit_js(ctx, result)
+    from cli_anything.zotero.core.results import exit_code_for, result_payload
+
+    transport = current_bridge(ctx).find_pdf(item_key, timeout=timeout)
+    data = transport.get("data")
+    text = data if isinstance(data, str) else str(data)
+    if transport.get("ok") and isinstance(text, str) and text.startswith("FOUND:"):
+        payload = result_payload(
+            action="item_find_pdf",
+            ok=True,
+            status="success",
+            code="FOUND",
+            key=item_key,
+            attachment_key=text.split("FOUND:", 1)[-1].strip(),
+            result=text,
+        )
+    elif transport.get("ok") and isinstance(text, str) and text.startswith("NOT_FOUND"):
+        payload = result_payload(
+            action="item_find_pdf",
+            ok=False,
+            status="not_found",
+            code="NOT_FOUND",
+            key=item_key,
+            error=text,
+        )
+    else:
+        payload = result_payload(
+            action="item_find_pdf",
+            ok=False,
+            status="error",
+            code="FIND_PDF_FAILED",
+            key=item_key,
+            error=transport.get("error") or text,
+        )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
+@item.command("fetch-pdf")
+@click.argument("item_key")
+@click.option(
+    "--sources",
+    default="zotero,unpaywall,epmc,biorxiv,arxiv",
+    show_default=True,
+    help="Comma-separated cascade: zotero,unpaywall,epmc,biorxiv,arxiv",
+)
+@click.option("--force", is_flag=True, help="Fetch even if item already has a PDF.")
+@click.option("--zotero-timeout", default=45, show_default=True, type=int)
+@click.option("--download-timeout", default=45, show_default=True, type=int)
+@click.pass_context
+def item_fetch_pdf_command(
+    ctx: click.Context,
+    item_key: str,
+    sources: str,
+    force: bool,
+    zotero_timeout: int,
+    download_timeout: int,
+) -> int:
+    """Fetch a PDF via Zotero find-pdf + open-access cascade, then attach."""
+    from cli_anything.zotero.core import pdf_fetch
+    from cli_anything.zotero.core.results import exit_code_for
+
+    try:
+        source_list = pdf_fetch.parse_sources(sources)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    payload = pdf_fetch.fetch_pdf_for_item(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        item_key,
+        sources=source_list,
+        library_id=int(current_session().get("current_library", 1)),
+        zotero_timeout=zotero_timeout,
+        download_timeout=download_timeout,
+        force=force,
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @item.command("search-annotations")
@@ -1629,6 +1771,141 @@ def _split_export_refs(items: str) -> list[str]:
     if not refs:
         raise click.ClickException("--items must contain at least one item key or ID.")
     return refs
+
+
+@cli.group("add")
+def add_group() -> None:
+    """Unified literature ingest (DOI / arXiv / file / BibTeX)."""
+
+
+@add_group.command("doi")
+@click.argument("doi")
+@click.option("--collection", "collection_key", default=None)
+@click.option("--tag", "tags", multiple=True)
+@click.option("--if-exists", type=click.Choice(["file", "skip", "duplicate"]), default="file", show_default=True)
+@click.option("--translator/--no-translator", "prefer_translator", default=True, show_default=True)
+@click.option("--fetch-pdf/--no-fetch-pdf", default=False, show_default=True, help="Also run PDF cascade after import.")
+@click.option("--pdf-sources", default="zotero,unpaywall,epmc,biorxiv,arxiv", show_default=True)
+@click.pass_context
+def add_doi_command(
+    ctx: click.Context,
+    doi: str,
+    collection_key: str | None,
+    tags: tuple[str, ...],
+    if_exists: str,
+    prefer_translator: bool,
+    fetch_pdf: bool,
+    pdf_sources: str,
+) -> int:
+    from cli_anything.zotero.core import add as add_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = add_mod.add_doi(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        doi,
+        collection_key=collection_key,
+        tags=list(tags),
+        session=current_session(),
+        if_exists=if_exists,
+        prefer_translator=prefer_translator,
+        fetch_pdf=fetch_pdf,
+        pdf_sources=pdf_sources,
+        library_id=int(current_session().get("current_library", 1)),
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
+@add_group.command("arxiv")
+@click.argument("arxiv_id")
+@click.option("--collection", "collection_key", default=None)
+@click.option("--tag", "tags", multiple=True)
+@click.option("--if-exists", type=click.Choice(["file", "skip", "duplicate"]), default="file", show_default=True)
+@click.option("--fetch-pdf/--no-fetch-pdf", default=True, show_default=True)
+@click.option("--pdf-sources", default="zotero,arxiv,unpaywall", show_default=True)
+@click.pass_context
+def add_arxiv_command(
+    ctx: click.Context,
+    arxiv_id: str,
+    collection_key: str | None,
+    tags: tuple[str, ...],
+    if_exists: str,
+    fetch_pdf: bool,
+    pdf_sources: str,
+) -> int:
+    from cli_anything.zotero.core import add as add_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = add_mod.add_arxiv(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        arxiv_id,
+        collection_key=collection_key,
+        tags=list(tags),
+        session=current_session(),
+        if_exists=if_exists,
+        fetch_pdf=fetch_pdf,
+        pdf_sources=pdf_sources,
+        library_id=int(current_session().get("current_library", 1)),
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
+@add_group.command("file")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--collection", "collection_key", default=None)
+@click.option("--tag", "tags", multiple=True)
+@click.option("--if-exists", type=click.Choice(["file", "skip", "duplicate"]), default="file", show_default=True)
+@click.pass_context
+def add_file_command(
+    ctx: click.Context,
+    path: str,
+    collection_key: str | None,
+    tags: tuple[str, ...],
+    if_exists: str,
+) -> int:
+    from cli_anything.zotero.core import add as add_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = add_mod.add_file(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        path,
+        collection_key=collection_key,
+        tags=list(tags),
+        session=current_session(),
+        if_exists=if_exists,
+        library_id=int(current_session().get("current_library", 1)),
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
+@add_group.command("bibtex")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--collection", "collection_key", default=None)
+@click.option("--tag", "tags", multiple=True)
+@click.pass_context
+def add_bibtex_command(
+    ctx: click.Context,
+    path: str,
+    collection_key: str | None,
+    tags: tuple[str, ...],
+) -> int:
+    from cli_anything.zotero.core import add as add_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = add_mod.add_bibtex(
+        current_runtime(ctx),
+        path,
+        collection_key=collection_key,
+        tags=list(tags),
+        session=current_session(),
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @cli.group("import")

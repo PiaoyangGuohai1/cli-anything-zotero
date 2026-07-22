@@ -6,7 +6,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Now — v1.2.0 Agent contract
+## Now — v1.3.0 Ingest & PDF
+
+- [x] `add doi|arxiv|file|bibtex`
+- [x] `item fetch-pdf` OA cascade
+- [x] `collection fetch-pdfs` + `--jsonl-progress`
+- [x] attach/find-pdf result schema
+- [x] Live smoke: add arxiv + fetch-pdf
+- [ ] Optional: `add url`
+
+## Done — v1.2.0 Agent contract
 
 ### Doctor & health
 - [x] `zotero-cli app doctor [--json]` aggregates connector / local API / plugin / bridge
@@ -35,12 +44,6 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Live smoke: `app doctor` ready; collection items returns DOI/hasPdf
 
 ---
-
-## Next — v1.3.0 (queued)
-
-- [ ] `add` command group
-- [ ] PDF cascade backend
-- [ ] JSONL progress for batch PDF
 
 ## Later — v1.4 / 1.5 (queued)
 

@@ -32,14 +32,15 @@ Theme: **agents can safely batch-run write ops**.
 - [x] Docs + skill + ROADMAP/TODO hygiene
 - [ ] Remaining: roll result schema to attach/find-pdf/file import; optional hard-fail on plugin mismatch
 
-## 1.3.0 — Ingest & PDF
+## 1.3.0 — Ingest & PDF (in progress)
 
 Theme: **one verb to add literature + get PDFs**.
 
-- [ ] Unified `add` entry: `doi` / `arxiv` / `url` / `file` / `bibtex`
-- [ ] PDF cascade: Zotero find-pdf → Unpaywall → EuropePMC/PMC → bioRxiv/arXiv → optional hook
-- [ ] `item fetch-pdf` / `collection fetch-pdfs` with JSONL progress + `--limit`
+- [x] Unified `add` entry: `doi` / `arxiv` / `file` / `bibtex` (`url` later)
+- [x] PDF cascade: Zotero find-pdf → Unpaywall → EuropePMC/PMC → bioRxiv/arXiv
+- [x] `item fetch-pdf` / `collection fetch-pdfs` with `--jsonl-progress` + `--limit`
 - [ ] Resume / partial progress for long batches
+- [ ] Optional custom hook source
 
 ## 1.4.0 — Library hygiene
 

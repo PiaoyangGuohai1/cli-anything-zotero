@@ -132,12 +132,16 @@ zotero-cli collection tree
 
 **Import**
 ```bash
-# DOI import: library dedupe → Zotero translator → Crossref BibTeX fallback
-zotero-cli import doi "10.1038/s41586-024-07871-6" --tag "review"
-zotero-cli import doi "10.1038/s41586-024-07871-6" --no-translator  # force Crossref path
-zotero-cli import pmid "37821702" --collection FMTCPUWN
-zotero-cli import file ./refs.bib   # multi-entry BibTeX is auto-split
-zotero-cli collection find-pdfs COLLECTION_KEY --timeout-per-item 45
+# Preferred agent ingest
+zotero-cli --json add doi "10.1038/s41586-024-07871-6" --tag "review" --fetch-pdf
+zotero-cli --json add arxiv 2602.02093 --collection COLLECTION_KEY
+zotero-cli --json add file ./paper.pdf
+zotero-cli --json add bibtex ./refs.bib --collection COLLECTION_KEY
+
+# Lower-level import still available
+zotero-cli import doi "10.1038/s41586-024-07871-6" --no-translator
+zotero-cli --json item fetch-pdf ITEM_KEY --sources zotero,unpaywall,arxiv
+zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progress
 ```
 
 **Read & Export**

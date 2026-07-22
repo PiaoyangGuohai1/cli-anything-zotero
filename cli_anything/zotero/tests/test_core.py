@@ -1511,6 +1511,55 @@ class ImportCoreTests(unittest.TestCase):
         self.assertIn("next_steps", payload)
         self.assertIn("write_ready", payload)
 
+    def test_pdf_source_and_arxiv_helpers(self):
+        from cli_anything.zotero.core import add as add_mod
+        from cli_anything.zotero.core import pdf_fetch
+
+        self.assertEqual(pdf_fetch.parse_sources("zotero,arxiv"), ["zotero", "arxiv"])
+        self.assertEqual(pdf_fetch.extract_arxiv_id("https://arxiv.org/abs/2602.02093v1"), "2602.02093")
+        self.assertEqual(add_mod.normalize_arxiv_id("arXiv:2602.02093"), "2602.02093")
+        self.assertTrue(pdf_fetch.arxiv_pdf_urls("10.48550/arXiv.2602.02093")[0].endswith("2602.02093.pdf"))
+        with self.assertRaises(ValueError):
+            pdf_fetch.parse_sources("scihub")
+
+    def test_fetch_pdf_already_has_pdf_short_circuit(self):
+        from cli_anything.zotero.core import pdf_fetch
+
+        class FakeBridge:
+            def find_pdf(self, *args, **kwargs):
+                raise AssertionError("should not call find_pdf")
+
+        with mock.patch(
+            "cli_anything.zotero.utils.zotero_sqlite.resolve_item",
+            return_value={"key": "ABCDEFGH", "title": "T", "DOI": "10.1/x", "hasPdf": True},
+        ):
+            payload = pdf_fetch.fetch_pdf_for_item(self.runtime, FakeBridge(), "ABCDEFGH")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["code"], "ALREADY_HAS_PDF")
+
+    def test_add_doi_wraps_import(self):
+        from cli_anything.zotero.core import add as add_mod
+
+        class FakeBridge:
+            pass
+
+        with mock.patch(
+            "cli_anything.zotero.core.imports.import_doi",
+            return_value={
+                "ok": True,
+                "status": "success",
+                "code": "IMPORTED",
+                "key": "NEWITEM1",
+                "title": "Paper",
+                "DOI": "10.1/xyz",
+                "source": "crossref-bibtex",
+            },
+        ):
+            payload = add_mod.add_doi(self.runtime, FakeBridge(), "10.1/xyz", fetch_pdf=False)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["action"], "add_doi")
+        self.assertEqual(payload["key"], "NEWITEM1")
+
     def test_import_file_splits_multi_entry_bibtex(self):
         bib_path = Path(self.tmpdir.name) / "multi.bib"
         bib_path.write_text(
