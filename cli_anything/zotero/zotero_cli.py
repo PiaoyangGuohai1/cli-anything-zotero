@@ -260,7 +260,37 @@ def current_session() -> dict[str, Any]:
     return session_mod.load_session_state()
 
 
+def _maybe_audit(payload: Any) -> None:
+    """Best-effort audit log for write-like result payloads."""
+    if not isinstance(payload, dict):
+        return
+    action = str(payload.get("action") or "")
+    if not action:
+        return
+    writeish = (
+        action.startswith(("add_", "import_", "item_attach", "item_find_pdf", "item_fetch_pdf", "item_merge", "collection_fetch", "docx_cite", "docx_"))
+        or action
+        in {
+            "item_merge",
+            "item_attach",
+            "item_fetch_pdf",
+            "item_find_pdf",
+            "collection_fetch_pdfs",
+            "docx_cite",
+        }
+    )
+    if not writeish:
+        return
+    try:
+        from cli_anything.zotero.core import audit as audit_mod
+
+        audit_mod.log_payload(payload)
+    except Exception:
+        pass
+
+
 def emit(ctx: click.Context | None, data: Any, *, message: str = "") -> None:
+    _maybe_audit(data)
     if root_json_output(ctx):
         click.echo(_json_text(data))
         return
@@ -511,6 +541,52 @@ def app_doctor(ctx: click.Context) -> int:
     payload = doctor_mod.run_doctor(current_runtime(ctx), current_bridge(ctx))
     emit(ctx, payload)
     return exit_code_for(payload)
+
+
+@cli.group("audit")
+def audit_group() -> None:
+    """Inspect local write-operation audit log."""
+
+
+@audit_group.command("path")
+@click.pass_context
+def audit_path_command(ctx: click.Context) -> int:
+    """Print the audit log file path."""
+    from cli_anything.zotero.core import audit as audit_mod
+
+    payload = {"action": "audit_path", "ok": True, "status": "success", "path": str(audit_mod.audit_path())}
+    # do not audit path lookups
+    if root_json_output(ctx):
+        click.echo(_json_text(payload))
+    else:
+        click.echo(payload["path"])
+    return 0
+
+
+@audit_group.command("tail")
+@click.option("--limit", default=20, show_default=True, type=int)
+@click.pass_context
+def audit_tail_command(ctx: click.Context, limit: int) -> int:
+    """Show the latest audit log entries."""
+    from cli_anything.zotero.core import audit as audit_mod
+
+    entries = audit_mod.tail(limit=limit)
+    payload = {
+        "action": "audit_tail",
+        "ok": True,
+        "status": "success",
+        "path": str(audit_mod.audit_path()),
+        "count": len(entries),
+        "entries": entries,
+    }
+    if root_json_output(ctx):
+        click.echo(_json_text(payload))
+    else:
+        for entry in entries:
+            click.echo(_json_text(entry))
+        if not entries:
+            click.echo("(empty audit log)")
+    return 0
 
 
 @app.command("plugin-status")
@@ -1438,6 +1514,7 @@ def item_merge_command(ctx: click.Context, keep_key: str, merge_keys: tuple[str,
         list(merge_keys),
         library_id=int(current_session().get("current_library", 1)),
         dry_run=dry_run,
+        runtime=current_runtime(ctx),
     )
     emit(ctx, payload)
     return exit_code_for(payload)

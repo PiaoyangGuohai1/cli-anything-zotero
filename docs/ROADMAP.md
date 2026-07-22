@@ -59,7 +59,8 @@ Theme: **unique DOCX path + agent packaging**.
 
 - [x] DOCX one-shot: `docx cite` (validate → doctor → static/dynamic)
 - [x] merge dry-run rich preview (attachments/tags/collections)
-- [ ] Optional audit log for privileged `js` / write ops
+- [x] merge preview SQLite fallback when bridge is down
+- [x] Optional audit log for write ops (`audit tail` / `audit path`)
 - [ ] First-class Agent Skill refresh (retry chains, when to use which import)
 - [ ] Optional degraded mode when Zotero is closed (read-only Web API; never replace bridge as primary)
 

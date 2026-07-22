@@ -167,14 +167,145 @@ def json_dumps_js(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _sqlite_summarize_item(runtime: Any, key: str, *, library_id: int) -> dict[str, Any] | None:
+    """Build a merge-preview style summary from local SQLite (offline fallback)."""
+    sqlite_path = runtime.environment.sqlite_path
+    item = zotero_sqlite.resolve_item(sqlite_path, key, library_id=library_id)
+    if not item:
+        return None
+    tags = [t.get("name") for t in (item.get("tags") or []) if t.get("name")]
+    children = zotero_sqlite.fetch_item_children(sqlite_path, item["itemID"])
+    attachments = []
+    notes = []
+    for child in children:
+        if child.get("typeName") == "attachment":
+            attachments.append(
+                {
+                    "key": child.get("key"),
+                    "title": child.get("title") or "",
+                    "contentType": child.get("contentType") or "",
+                    "filename": child.get("attachmentPath") or "",
+                }
+            )
+        elif child.get("typeName") == "note":
+            notes.append({"key": child.get("key"), "title": (child.get("title") or child.get("notePreview") or "")[:80]})
+
+    # collections membership
+    collections: list[dict[str, Any]] = []
+    try:
+        from contextlib import closing
+
+        with closing(zotero_sqlite.connect_readonly(sqlite_path)) as conn:
+            rows = conn.execute(
+                """
+                SELECT c.collectionID, c.key, c.collectionName
+                FROM collectionItems ci
+                JOIN collections c ON c.collectionID = ci.collectionID
+                WHERE ci.itemID = ?
+                ORDER BY c.collectionName COLLATE NOCASE
+                """,
+                (int(item["itemID"]),),
+            ).fetchall()
+            for row in rows:
+                collections.append(
+                    {
+                        "id": row["collectionID"],
+                        "key": row["key"],
+                        "name": row["collectionName"],
+                    }
+                )
+    except Exception:
+        collections = []
+
+    return {
+        "key": item.get("key"),
+        "title": item.get("title") or "",
+        "DOI": item.get("DOI") or (item.get("fields") or {}).get("DOI") or "",
+        "date": item.get("date") or item.get("dateAdded") or "",
+        "itemType": item.get("typeName"),
+        "tags": tags,
+        "collections": collections,
+        "attachments": attachments,
+        "notes": notes,
+        "nAttachments": len(attachments),
+        "nNotes": len(notes),
+        "nTags": len(tags),
+        "nCollections": len(collections),
+    }
+
+
+def _preview_from_summaries(
+    keep_key: str,
+    merge_keys: list[str],
+    keep_sum: dict[str, Any],
+    others: list[dict[str, Any]],
+    missing: list[str],
+    *,
+    source: str,
+) -> dict[str, Any]:
+    keep_tag_set = set(keep_sum.get("tags") or [])
+    keep_col_set = {c.get("key") or str(c.get("id")) for c in (keep_sum.get("collections") or [])}
+    tags_to_add: list[str] = []
+    cols_to_add: list[dict[str, Any]] = []
+    attachments_to_move = 0
+    notes_to_move = 0
+    for other in others:
+        attachments_to_move += int(other.get("nAttachments") or 0)
+        notes_to_move += int(other.get("nNotes") or 0)
+        for tag in other.get("tags") or []:
+            if tag not in keep_tag_set:
+                tags_to_add.append(tag)
+                keep_tag_set.add(tag)
+        for col in other.get("collections") or []:
+            ck = col.get("key") or str(col.get("id"))
+            if ck not in keep_col_set:
+                cols_to_add.append(col)
+                keep_col_set.add(ck)
+    will = {
+        "move_attachments": attachments_to_move,
+        "move_notes": notes_to_move,
+        "add_tags": tags_to_add,
+        "add_collections": cols_to_add,
+        "trash_items": [o.get("key") for o in others if o.get("key")],
+    }
+    return result_payload(
+        action="item_merge_preview",
+        ok=True,
+        status="dry_run",
+        code="DRY_RUN",
+        keep=keep_sum,
+        others=others,
+        missing=missing,
+        will=will,
+        preview_source=source,
+        summary={
+            "trash_count": len(will["trash_items"]),
+            "move_attachments": attachments_to_move,
+            "move_notes": notes_to_move,
+            "add_tags": tags_to_add,
+            "add_collections": [c.get("name") or c.get("key") for c in cols_to_add],
+        },
+        message=(
+            f"Would trash {len(will['trash_items'])} item(s) into keep={keep_key}: "
+            f"move {attachments_to_move} attachment(s), {notes_to_move} note(s); "
+            f"add {len(tags_to_add)} tag(s), {len(cols_to_add)} collection(s). "
+            f"(preview via {source}) Re-run with --confirm to apply."
+        ),
+    )
+
+
 def preview_merge(
     bridge: Any,
     keep_key: str,
     merge_keys: list[str],
     *,
     library_id: int = 1,
+    runtime: Any | None = None,
 ) -> dict[str, Any]:
-    """Return a detailed merge preview without modifying the library."""
+    """Return a detailed merge preview without modifying the library.
+
+    Prefers JS bridge; falls back to SQLite when bridge is unavailable and runtime is provided.
+    """
     merge_keys = [k for k in merge_keys if k and k != keep_key]
     if not keep_key or not merge_keys:
         return result_payload(
@@ -184,54 +315,86 @@ def preview_merge(
             code="INVALID_ARGS",
             error="keep key and at least one other key are required",
         )
-    transport = bridge.execute_js(_preview_js(keep_key, merge_keys, library_id), wait_seconds=20)
-    if not transport.get("ok"):
-        return result_payload(
-            action="item_merge_preview",
-            ok=False,
-            status="error",
-            code="BRIDGE_ERROR",
-            error=transport.get("error") or "bridge preview failed",
-            keep=keep_key,
-            merge=merge_keys,
+
+    # Prefer live bridge preview
+    bridge_error = None
+    try:
+        if bridge is not None and hasattr(bridge, "execute_js"):
+            transport = bridge.execute_js(_preview_js(keep_key, merge_keys, library_id), wait_seconds=20)
+            if transport.get("ok"):
+                data = transport.get("data")
+                if isinstance(data, dict) and data.get("ok"):
+                    will = data.get("will") or {}
+                    return result_payload(
+                        action="item_merge_preview",
+                        ok=True,
+                        status="dry_run",
+                        code="DRY_RUN",
+                        keep=data.get("keep"),
+                        others=data.get("others") or [],
+                        missing=data.get("missing") or [],
+                        will=will,
+                        preview_source="bridge",
+                        summary={
+                            "trash_count": len(will.get("trash_items") or []),
+                            "move_attachments": will.get("move_attachments") or 0,
+                            "move_notes": will.get("move_notes") or 0,
+                            "add_tags": will.get("add_tags") or [],
+                            "add_collections": [
+                                c.get("name") or c.get("key") for c in (will.get("add_collections") or [])
+                            ],
+                        },
+                        message=(
+                            f"Would trash {len(will.get('trash_items') or [])} item(s) into keep={keep_key}: "
+                            f"move {will.get('move_attachments') or 0} attachment(s), "
+                            f"{will.get('move_notes') or 0} note(s); "
+                            f"add {len(will.get('add_tags') or [])} tag(s), "
+                            f"{len(will.get('add_collections') or [])} collection(s). "
+                            "(preview via bridge) Re-run with --confirm to apply."
+                        ),
+                    )
+                bridge_error = (data or {}).get("error") if isinstance(data, dict) else "preview failed"
+            else:
+                bridge_error = transport.get("error") or "bridge preview failed"
+    except Exception as exc:
+        bridge_error = str(exc)
+
+    # SQLite offline fallback
+    if runtime is not None and getattr(runtime, "environment", None) is not None:
+        keep_sum = _sqlite_summarize_item(runtime, keep_key, library_id=library_id)
+        if not keep_sum:
+            return result_payload(
+                action="item_merge_preview",
+                ok=False,
+                status="error",
+                code="KEEP_NOT_FOUND",
+                error=f"keep item not found: {keep_key}",
+                bridge_error=bridge_error,
+                preview_source="sqlite",
+            )
+        others = []
+        missing = []
+        for key in merge_keys:
+            summary = _sqlite_summarize_item(runtime, key, library_id=library_id)
+            if summary is None:
+                missing.append(key)
+            else:
+                others.append(summary)
+        payload = _preview_from_summaries(
+            keep_key, merge_keys, keep_sum, others, missing, source="sqlite"
         )
-    data = transport.get("data")
-    if not isinstance(data, dict) or not data.get("ok"):
-        return result_payload(
-            action="item_merge_preview",
-            ok=False,
-            status="error",
-            code="PREVIEW_FAILED",
-            error=(data or {}).get("error") if isinstance(data, dict) else "preview failed",
-            keep=keep_key,
-            merge=merge_keys,
-            result=data,
-        )
-    will = data.get("will") or {}
+        if bridge_error:
+            payload["bridge_error"] = bridge_error
+        return payload
+
     return result_payload(
         action="item_merge_preview",
-        ok=True,
-        status="dry_run",
-        code="DRY_RUN",
-        keep=data.get("keep"),
-        others=data.get("others") or [],
-        missing=data.get("missing") or [],
-        will=will,
-        summary={
-            "trash_count": len(will.get("trash_items") or []),
-            "move_attachments": will.get("move_attachments") or 0,
-            "move_notes": will.get("move_notes") or 0,
-            "add_tags": will.get("add_tags") or [],
-            "add_collections": [c.get("name") or c.get("key") for c in (will.get("add_collections") or [])],
-        },
-        message=(
-            f"Would trash {len(will.get('trash_items') or [])} item(s) into keep={keep_key}: "
-            f"move {will.get('move_attachments') or 0} attachment(s), "
-            f"{will.get('move_notes') or 0} note(s); "
-            f"add {len(will.get('add_tags') or [])} tag(s), "
-            f"{len(will.get('add_collections') or [])} collection(s). "
-            "Re-run with --confirm to apply."
-        ),
+        ok=False,
+        status="error",
+        code="BRIDGE_ERROR",
+        error=bridge_error or "bridge preview failed and no runtime for SQLite fallback",
+        keep=keep_key,
+        merge=merge_keys,
     )
 
 
@@ -242,6 +405,7 @@ def merge_items(
     *,
     library_id: int = 1,
     dry_run: bool = True,
+    runtime: Any | None = None,
 ) -> dict[str, Any]:
     merge_keys = [k for k in merge_keys if k and k != keep_key]
     if not keep_key or not merge_keys:
@@ -253,7 +417,7 @@ def merge_items(
             error="keep key and at least one other key are required",
         )
 
-    preview = preview_merge(bridge, keep_key, merge_keys, library_id=library_id)
+    preview = preview_merge(bridge, keep_key, merge_keys, library_id=library_id, runtime=runtime)
     if dry_run:
         # Keep action name stable for CLI consumers
         preview["action"] = "item_merge"

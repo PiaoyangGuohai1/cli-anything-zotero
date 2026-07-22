@@ -145,6 +145,9 @@ zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progre
 
 # DOCX one-shot citations
 zotero-cli --json docx cite draft.docx --output draft-cited.docx --mode auto --force
+
+# Audit recent write ops
+zotero-cli --json audit tail --limit 20
 ```
 
 **Read & Export**

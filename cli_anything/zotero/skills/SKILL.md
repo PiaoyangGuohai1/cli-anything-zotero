@@ -14,7 +14,8 @@ Agent-native CLI for Zotero 7/8/9 desktop. 40+ commands across four backends.
 
 1. Run `zotero-cli --json app doctor` first. If `write_ready` is false, follow `next_steps` (start Zotero / install plugin / enable Local API).
 2. Prefer `zotero-cli --json ...` for machine-readable results (`ok`, `status`, `code`, `key`).
-3. Optionally run `zotero-cli app check-update` once per session.
+3. Write ops are appended to a local audit log: `zotero-cli --json audit tail --limit 20` / `audit path`.
+4. Optionally run `zotero-cli app check-update` once per session.
 
 ## When to Use
 

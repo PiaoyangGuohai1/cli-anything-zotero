@@ -6,7 +6,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Now — v1.5 DOCX + merge polish
+## Now — post-1.2 polish
+
+- [x] merge preview SQLite fallback
+- [x] audit log (`audit path` / `audit tail`)
+- [x] Live smoke: audit after write + merge preview
+- [x] Skill mention audit
+
+## Done — v1.5 DOCX + merge polish
 
 - [x] `item merge` rich dry-run preview (attachments/tags/collections)
 - [x] `docx cite` one-shot pipeline (`auto|static|dynamic`)
@@ -62,9 +69,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ## Later
 
-- [ ] Optional audit log for privileged `js` / write ops
-- [ ] merge preview offline SQLite fallback when bridge down
 - [x] Package release v1.2.0
+- [ ] Optional degraded read mode when Zotero is closed
 
 ---
 

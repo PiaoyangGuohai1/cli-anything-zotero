@@ -1638,6 +1638,55 @@ class ImportCoreTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["code"], "INVALID_MODE")
 
+    def test_merge_preview_sqlite_fallback(self):
+        from cli_anything.zotero.core import hygiene
+
+        class DeadBridge:
+            def execute_js(self, *args, **kwargs):
+                return {"ok": False, "data": None, "error": "bridge down"}
+
+        with mock.patch(
+            "cli_anything.zotero.core.hygiene._sqlite_summarize_item",
+            side_effect=lambda runtime, key, library_id=1: {
+                "key": key,
+                "title": f"T-{key}",
+                "DOI": "10.1/x" if key == "KEEPKEY1" else "10.1/x",
+                "date": "2024",
+                "itemType": "journalArticle",
+                "tags": ["a"] if key == "KEEPKEY1" else ["b"],
+                "collections": [{"key": "C1", "name": "Col"}] if key != "KEEPKEY1" else [],
+                "attachments": [{"key": "ATT1"}] if key != "KEEPKEY1" else [],
+                "notes": [],
+                "nAttachments": 1 if key != "KEEPKEY1" else 0,
+                "nNotes": 0,
+                "nTags": 1,
+                "nCollections": 1 if key != "KEEPKEY1" else 0,
+            },
+        ):
+            payload = hygiene.preview_merge(
+                DeadBridge(),
+                "KEEPKEY1",
+                ["OTHERKEY"],
+                runtime=self.runtime,
+            )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload.get("preview_source"), "sqlite")
+        self.assertEqual(payload["summary"]["move_attachments"], 1)
+        self.assertIn("b", payload["summary"]["add_tags"])
+
+    def test_audit_log_roundtrip(self):
+        from cli_anything.zotero.core import audit as audit_mod
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.dict("os.environ", {"ZOTERO_CLI_AUDIT_DIR": tmp}):
+                entry = audit_mod.log_event("add_doi", ok=True, status="success", code="IMPORTED", key="ABCDEFGH")
+                self.assertEqual(entry["action"], "add_doi")
+                self.assertTrue(Path(tmp, "audit.jsonl").is_file())
+                rows = audit_mod.tail(5)
+                self.assertEqual(rows[-1]["key"], "ABCDEFGH")
+
     def test_add_url_routes_doi(self):
         from cli_anything.zotero.core import add as add_mod
 

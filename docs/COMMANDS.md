@@ -13,6 +13,8 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `app ping` | Check if Zotero is running |
 | `app status` | Runtime and backend status |
 | `app doctor` | Aggregate health: connector + local API + plugin + bridge |
+| `audit path` | Show local write-operation audit log path |
+| `audit tail [--limit N]` | Show latest audit log entries |
 | `app version` | Package and Zotero version |
 | `app launch` | Launch Zotero if not running |
 | `app enable-local-api` | Enable Local API in Zotero prefs |
