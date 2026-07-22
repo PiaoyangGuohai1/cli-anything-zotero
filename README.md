@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/piaoyangguohai1-cli-anything-zotero-badge.png)](https://mseep.ai/app/piaoyangguohai1-cli-anything-zotero)
+
 # cli-anything-zotero
 
 [![PyPI](https://img.shields.io/pypi/v/cli-anything-zotero?color=blue)](https://pypi.org/project/cli-anything-zotero/)
