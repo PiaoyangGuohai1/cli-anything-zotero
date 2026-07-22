@@ -8,7 +8,7 @@
 
 **Let AI manage your Zotero library.**
 
-[中文文档](docs/README_zh.md) | English
+[中文文档](docs/README_zh.md) | English | [Roadmap](docs/ROADMAP.md) | [TODO](docs/TODO.md) | [Commands](docs/COMMANDS.md)
 
 > **MCP legacy notice:** `v0.9.5` is the final release with the `zotero-mcp` command and `cli-anything-zotero[mcp]` extra. New releases are CLI/SDK-first. Existing MCP users should pin `pip install "cli-anything-zotero[mcp]==0.9.5"` or use the `legacy/mcp` branch.
 

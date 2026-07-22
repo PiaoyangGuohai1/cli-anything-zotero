@@ -345,12 +345,9 @@ def _normalize_session_library(runtime: discovery.RuntimeContext, library_ref: s
 
 
 def _import_exit_code(payload: dict[str, Any]) -> int:
-    status = payload.get("status")
-    if status in {"partial_success", "error", "failed"}:
-        return 1
-    if payload.get("ok") is False:
-        return 1
-    return 0
+    from cli_anything.zotero.core.results import exit_code_for
+
+    return exit_code_for(payload)
 
 
 @click.group(
@@ -502,6 +499,18 @@ def app_install_plugin(ctx: click.Context) -> int:
         ),
     })
     return 0
+
+
+@app.command("doctor")
+@click.pass_context
+def app_doctor(ctx: click.Context) -> int:
+    """Diagnose local Zotero + CLI Bridge readiness for agent workflows."""
+    from cli_anything.zotero.core import doctor as doctor_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = doctor_mod.run_doctor(current_runtime(ctx), current_bridge(ctx))
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @app.command("plugin-status")
@@ -1697,6 +1706,14 @@ def import_json_command(
 @click.option("--collection", "collection_key", default=None, help="Collection key to add the imported item to.")
 @click.option("--tag", "tags", multiple=True, help="Tag to apply after import. Repeatable.")
 @click.option("--dedupe/--no-dedupe", default=True, show_default=True, help="Reuse an existing library item with the same DOI when present.")
+@click.option(
+    "--if-exists",
+    "if_exists",
+    type=click.Choice(["file", "skip", "duplicate"]),
+    default="file",
+    show_default=True,
+    help="When DOI already exists: file=reuse and add collection/tags; skip=leave untouched; duplicate=always create.",
+)
 @click.option("--translator/--no-translator", "prefer_translator", default=True, show_default=True, help="Try Zotero DOI translator before Crossref BibTeX fallback.")
 @click.option("--connector-timeout", default=120, show_default=True, type=int, help="Timeout for Crossref→connector fallback import.")
 @click.pass_context
@@ -1706,18 +1723,28 @@ def import_doi_command(
     collection_key: str | None,
     tags: tuple[str, ...],
     dedupe: bool,
+    if_exists: str,
     prefer_translator: bool,
     connector_timeout: int,
 ) -> int:
     """Import an item by DOI.
 
     Strategy:
-      1) optional library DOI dedupe
+      1) optional library DOI dedupe / if-exists policy
       2) Zotero built-in DOI translator (JS bridge)
       3) Crossref BibTeX → connector import fallback
 
     Agent-recommended path when translator network is flaky.
     """
+    from cli_anything.zotero.core import doctor as doctor_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    # --if-exists duplicate implies no-dedupe
+    if if_exists == "duplicate":
+        dedupe = False
+    elif if_exists in {"file", "skip"}:
+        dedupe = True
+
     payload = imports.import_doi(
         current_runtime(ctx),
         current_bridge(ctx),
@@ -1726,12 +1753,16 @@ def import_doi_command(
         tags=list(tags),
         session=current_session(),
         dedupe=dedupe,
+        if_exists=if_exists,
         prefer_translator=prefer_translator,
         connector_timeout=connector_timeout,
         library_id=int(current_session().get("current_library", 1)),
     )
+    warn = doctor_mod.plugin_version_warning(current_runtime(ctx))
+    if warn:
+        payload["plugin_warning"] = warn
     emit(ctx, payload)
-    return 0 if payload.get("ok") else 1
+    return exit_code_for(payload)
 
 
 @import_group.command("pmid")

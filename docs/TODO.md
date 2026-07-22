@@ -1,0 +1,58 @@
+# Active TODO
+
+Source of truth for **in-progress** work. Roadmap overview: [ROADMAP.md](./ROADMAP.md).
+
+Legend: `[ ]` todo · `[~]` in progress · `[x]` done
+
+---
+
+## Now — v1.2.0 Agent contract
+
+### Doctor & health
+- [x] `zotero-cli app doctor [--json]` aggregates connector / local API / plugin / bridge
+- [x] Write commands warn when plugin `<` bundled required version (`import doi` includes `plugin_warning`)
+
+### Result contract
+- [x] Shared helper module for success/error/partial payloads (`core/results.py`)
+- [~] Import / attach / find-pdf use shared schema (import doi done; others next)
+- [x] Exit codes: success=0, partial/error=1 (`exit_code_for`)
+
+### Idempotency
+- [x] Document and expose `--if-exists file|skip|duplicate` on DOI
+- [x] Dedupe hit still applies tags/collection when `if-exists=file`
+
+### Query fields for agents
+- [x] Enrich collection/item listings with `DOI` + `hasPdf` (+ `date`) via SQLite
+- [x] Prefer zero extra round-trips when SQLite can supply fields
+
+### Docs / skill
+- [x] README points to ROADMAP/TODO
+- [x] SKILL.md: doctor first; import fallback chain
+- [x] Delete outdated `ZOTERO.md`; slim package README
+
+### Verification
+- [x] Unit tests for doctor payload shape + result helpers
+- [x] Live smoke: `app doctor` ready; collection items returns DOI/hasPdf
+
+---
+
+## Next — v1.3.0 (queued)
+
+- [ ] `add` command group
+- [ ] PDF cascade backend
+- [ ] JSONL progress for batch PDF
+
+## Later — v1.4 / 1.5 (queued)
+
+- [ ] duplicates / merge
+- [ ] CSL-JSON import
+- [ ] DOCX polish + audit log
+
+---
+
+## Retired / deleted plans
+
+| Artifact | Action | Reason |
+|----------|--------|--------|
+| `ZOTERO.md` (repo root) | **Deleted 2026-07-22** | Pre-bridge operator doc; claimed JS privileged exec out of scope; Windows-only paths; contradicted current architecture |
+| `cli_anything/zotero/README.md` (old 550-line harness guide) | **Replaced** with short pointer | Duplicated root README; outdated install paths (`zotero/agent-harness`) |

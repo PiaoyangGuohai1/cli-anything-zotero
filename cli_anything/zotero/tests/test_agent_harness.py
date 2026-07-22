@@ -14,7 +14,8 @@ class AgentHarnessPackagingTests(unittest.TestCase):
         required = [
             HARNESS_ROOT / "setup.py",
             HARNESS_ROOT / "pyproject.toml",
-            HARNESS_ROOT / "ZOTERO.md",
+            HARNESS_ROOT / "docs" / "ROADMAP.md",
+            HARNESS_ROOT / "docs" / "TODO.md",
             HARNESS_ROOT / "skill_generator.py",
             HARNESS_ROOT / "templates" / "SKILL.md.template",
             HARNESS_ROOT / "cli_anything" / "zotero" / "README.md",

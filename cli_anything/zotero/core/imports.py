@@ -883,21 +883,47 @@ def import_doi(
     tags: list[str] | tuple[str, ...] = (),
     session: dict[str, Any] | None = None,
     dedupe: bool = True,
+    if_exists: str = "file",
     prefer_translator: bool = True,
     connector_timeout: int = 120,
     library_id: int = 1,
 ) -> dict[str, Any]:
-    """Import a DOI robustly: optional dedupe → Zotero translator → Crossref BibTeX fallback."""
+    """Import a DOI robustly: optional dedupe → Zotero translator → Crossref BibTeX fallback.
+
+    if_exists:
+      - file: reuse existing DOI item; add collection/tags if missing
+      - skip: reuse without modifying membership/tags
+      - duplicate: always create a new item (implies no dedupe)
+    """
+    from cli_anything.zotero.core.results import normalize_if_exists, result_payload
+
+    try:
+        if_exists = normalize_if_exists(if_exists)
+    except ValueError as exc:
+        return result_payload(
+            action="import_doi",
+            ok=False,
+            status="error",
+            code="INVALID_IF_EXISTS",
+            DOI=doi,
+            error=str(exc),
+        )
+
+    if if_exists == "duplicate":
+        dedupe = False
+    elif if_exists in {"file", "skip"}:
+        dedupe = True
+
     normalized = normalize_doi(doi)
     if not normalized or not _DOI_RE.search(normalized):
-        return {
-            "action": "import_doi",
-            "status": "error",
-            "ok": False,
-            "code": "INVALID_DOI",
-            "DOI": doi,
-            "error": f"Invalid DOI: {doi!r}",
-        }
+        return result_payload(
+            action="import_doi",
+            ok=False,
+            status="error",
+            code="INVALID_DOI",
+            DOI=doi,
+            error=f"Invalid DOI: {doi!r}",
+        )
 
     tag_list = list(tags) if tags else []
     attempts: list[dict[str, Any]] = []
@@ -909,28 +935,34 @@ def import_doi(
         if isinstance(existing_data, list) and existing_data:
             item = existing_data[0]
             key = item.get("key")
-            if key and collection_key and hasattr(bridge, "add_to_collection"):
-                try:
-                    bridge.add_to_collection(key, collection_key, library_id=library_id)
-                except Exception:
-                    pass
-            if key and tag_list and hasattr(bridge, "manage_tags"):
-                try:
-                    bridge.manage_tags(key, tag_list, [], library_id=library_id)
-                except Exception:
-                    pass
-            return {
-                "action": "import_doi",
-                "status": "already_exists",
-                "ok": True,
-                "code": "ALREADY_EXISTS",
-                "DOI": normalized,
-                "key": key,
-                "title": item.get("title"),
-                "source": "library-dedupe",
-                "existing_count": len(existing_data),
-                "attempts": attempts,
-            }
+            modified = False
+            if if_exists == "file":
+                if key and collection_key and hasattr(bridge, "add_to_collection"):
+                    try:
+                        bridge.add_to_collection(key, collection_key, library_id=library_id)
+                        modified = True
+                    except Exception:
+                        pass
+                if key and tag_list and hasattr(bridge, "manage_tags"):
+                    try:
+                        bridge.manage_tags(key, tag_list, [], library_id=library_id)
+                        modified = True
+                    except Exception:
+                        pass
+            return result_payload(
+                action="import_doi",
+                ok=True,
+                status="already_exists",
+                code="ALREADY_EXISTS",
+                DOI=normalized,
+                key=key,
+                title=item.get("title"),
+                source="library-dedupe",
+                if_exists=if_exists,
+                modified=modified,
+                existing_count=len(existing_data),
+                attempts=attempts,
+            )
 
     # 2) Zotero built-in DOI translator
     translator_error = None
@@ -948,31 +980,33 @@ def import_doi(
         }
         attempts.append({"step": "zotero-translator", **{k: app.get(k) for k in ("ok", "code", "error", "key")}})
         if app.get("ok") and app.get("key"):
-            return {
-                "action": "import_doi",
-                "status": "success",
-                "ok": True,
-                "code": app.get("code") or "IMPORTED",
-                "DOI": normalized,
-                "key": app.get("key"),
-                "title": app.get("title"),
-                "source": app.get("source") or "zotero-translator",
-                "attempts": attempts,
-            }
+            return result_payload(
+                action="import_doi",
+                ok=True,
+                status="success",
+                code=app.get("code") or "IMPORTED",
+                DOI=normalized,
+                key=app.get("key"),
+                title=app.get("title"),
+                source=app.get("source") or "zotero-translator",
+                if_exists=if_exists,
+                attempts=attempts,
+            )
         # Also accept ok with key missing but message (legacy)
         if app.get("ok") and not app.get("error"):
-            return {
-                "action": "import_doi",
-                "status": "success",
-                "ok": True,
-                "code": app.get("code") or "IMPORTED",
-                "DOI": normalized,
-                "key": app.get("key"),
-                "title": app.get("title"),
-                "source": app.get("source") or "zotero-translator",
-                "message": app.get("message"),
-                "attempts": attempts,
-            }
+            return result_payload(
+                action="import_doi",
+                ok=True,
+                status="success",
+                code=app.get("code") or "IMPORTED",
+                DOI=normalized,
+                key=app.get("key"),
+                title=app.get("title"),
+                source=app.get("source") or "zotero-translator",
+                message=app.get("message"),
+                if_exists=if_exists,
+                attempts=attempts,
+            )
         translator_error = app.get("error") or app.get("code") or "translator failed"
 
     # 3) Crossref BibTeX → connector import
@@ -998,31 +1032,33 @@ def import_doi(
         item0 = imported[0] if imported else {}
         key = item0.get("key")
         attempts.append({"step": "crossref-bibtex", "ok": True, "key": key})
-        return {
-            "action": "import_doi",
-            "status": "success",
-            "ok": True,
-            "code": "IMPORTED",
-            "DOI": normalized,
-            "key": key,
-            "title": item0.get("title"),
-            "source": "crossref-bibtex",
-            "items": imported,
-            "target": target,
-            "tags": normalized_tags,
-            "translator_error": translator_error,
-            "attempts": attempts,
-        }
+        return result_payload(
+            action="import_doi",
+            ok=True,
+            status="success",
+            code="IMPORTED",
+            DOI=normalized,
+            key=key,
+            title=item0.get("title"),
+            source="crossref-bibtex",
+            items=imported,
+            target=target,
+            tags=normalized_tags,
+            translator_error=translator_error,
+            if_exists=if_exists,
+            attempts=attempts,
+        )
     except Exception as exc:
         attempts.append({"step": "crossref-bibtex", "ok": False, "error": str(exc)})
-        return {
-            "action": "import_doi",
-            "status": "error",
-            "ok": False,
-            "code": "IMPORT_FAILED",
-            "DOI": normalized,
-            "error": str(exc),
-            "translator_error": translator_error,
-            "attempts": attempts,
-        }
+        return result_payload(
+            action="import_doi",
+            ok=False,
+            status="error",
+            code="IMPORT_FAILED",
+            DOI=normalized,
+            error=str(exc),
+            translator_error=translator_error,
+            if_exists=if_exists,
+            attempts=attempts,
+        )
 

@@ -343,6 +343,31 @@ def _base_item_select() -> str:
                 n.title,
                 ''
             ) AS title,
+            (
+                SELECT v.value
+                FROM itemData d
+                JOIN fields f ON f.fieldID = d.fieldID
+                JOIN itemDataValues v ON v.valueID = d.valueID
+                WHERE d.itemID = i.itemID AND f.fieldName = 'DOI'
+                LIMIT 1
+            ) AS DOI,
+            (
+                SELECT v.value
+                FROM itemData d
+                JOIN fields f ON f.fieldID = d.fieldID
+                JOIN itemDataValues v ON v.valueID = d.valueID
+                WHERE d.itemID = i.itemID AND f.fieldName = 'date'
+                LIMIT 1
+            ) AS date,
+            EXISTS (
+                SELECT 1
+                FROM itemAttachments ia
+                WHERE ia.parentItemID = i.itemID
+                  AND (
+                    LOWER(COALESCE(ia.contentType, '')) = 'application/pdf'
+                    OR LOWER(COALESCE(ia.path, '')) LIKE '%.pdf'
+                  )
+            ) AS hasPdf,
             n.parentItemID AS noteParentItemID,
             n.note AS noteContent,
             a.parentItemID AS attachmentParentItemID,
@@ -362,6 +387,11 @@ def _base_item_select() -> str:
 
 def _normalize_item(conn: sqlite3.Connection, row: sqlite3.Row, include_related: bool = False) -> dict[str, Any]:
     item = dict(row)
+    # SQLite may return 0/1 for EXISTS; normalize for agents.
+    has_pdf = item.get("hasPdf")
+    item["hasPdf"] = bool(has_pdf) if has_pdf is not None else False
+    if item.get("DOI") is None:
+        item["DOI"] = ""
     item["fields"] = _fetch_item_fields(conn, int(row["itemID"])) if include_related else {}
     item["creators"] = _fetch_item_creators(conn, int(row["itemID"])) if include_related else []
     item["tags"] = _fetch_item_tags(conn, int(row["itemID"])) if include_related else []

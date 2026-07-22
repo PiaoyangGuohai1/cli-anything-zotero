@@ -1479,11 +1479,37 @@ class ImportCoreTests(unittest.TestCase):
             collection_key="COLLAAAA",
             tags=["t1"],
             dedupe=True,
+            if_exists="file",
         )
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["status"], "already_exists")
         self.assertEqual(payload["key"], "EXISTING1")
         self.assertEqual(payload["source"], "library-dedupe")
+        self.assertTrue(payload.get("modified"))
+
+    def test_result_helpers_and_doctor_shape(self):
+        from cli_anything.zotero.core import doctor as doctor_mod
+        from cli_anything.zotero.core.results import exit_code_for, result_payload
+
+        ok_payload = result_payload(action="x", ok=True, status="success", code="OK")
+        self.assertEqual(exit_code_for(ok_payload), 0)
+        bad = result_payload(action="x", ok=False, status="error", code="E", error="nope")
+        self.assertEqual(exit_code_for(bad), 1)
+        partial = result_payload(action="x", ok=True, status="partial_success")
+        self.assertEqual(exit_code_for(partial), 1)
+
+        class FakeBridge:
+            def bridge_endpoint_active(self):
+                return False
+
+            def execute_js_http_required(self, *args, **kwargs):
+                return {"ok": False, "data": None, "error": "down"}
+
+        payload = doctor_mod.run_doctor(self.runtime, FakeBridge())
+        self.assertEqual(payload["action"], "app_doctor")
+        self.assertIn("checks", payload)
+        self.assertIn("next_steps", payload)
+        self.assertIn("write_ready", payload)
 
     def test_import_file_splits_multi_entry_bibtex(self):
         bib_path = Path(self.tmpdir.name) / "multi.bib"

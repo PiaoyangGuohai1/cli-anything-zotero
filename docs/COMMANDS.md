@@ -12,6 +12,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 |---------|-------------|
 | `app ping` | Check if Zotero is running |
 | `app status` | Runtime and backend status |
+| `app doctor` | Aggregate health: connector + local API + plugin + bridge |
 | `app version` | Package and Zotero version |
 | `app launch` | Launch Zotero if not running |
 | `app enable-local-api` | Enable Local API in Zotero prefs |
@@ -65,7 +66,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `collection find <query>` | Search collections by name | SQLite |
 | `collection tree` | Display collection hierarchy | SQLite |
 | `collection get <ref>` | Collection details | SQLite |
-| `collection items <ref>` | List items in collection | SQLite |
+| `collection items <ref>` | List items in collection (includes `DOI`, `hasPdf`, `date`) | SQLite |
 | `collection create <name>` | Create new collection | SQLite (experimental) |
 | `collection stats <key>` | Statistics (item count, PDF coverage, year/journal distribution) | JS Bridge |
 | `collection find-pdfs <key> [--timeout-per-item N] [--limit N]` | Find Available PDFs per missing item (avoids bulk timeout) | JS Bridge |
@@ -78,7 +79,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 
 | Command | Description | Backend |
 |---------|-------------|---------|
-| `import doi <doi> [--tag T] [--collection K] [--dedupe/--no-dedupe] [--translator/--no-translator]` | Import by DOI (translator → Crossref BibTeX fallback) | JS Bridge + Connector |
+| `import doi <doi> [--tag T] [--collection K] [--if-exists file\|skip\|duplicate] [--translator/--no-translator]` | Import by DOI (dedupe/file → translator → Crossref) | JS Bridge + Connector |
 | `import pmid <pmid> [--tag T] [--collection K]` | Import by PMID with auto-metadata | JS Bridge |
 | `import file <path> [--collection K] [--connector-timeout N] [--split-bib/--no-split-bib]` | Import from RIS/BibTeX file (multi-entry BibTeX auto-splits) | Connector |
 | `import json <path> [--collection K]` | Import from JSON | Connector |

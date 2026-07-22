@@ -12,8 +12,9 @@ Agent-native CLI for Zotero 7/8/9 desktop. 40+ commands across four backends.
 
 ## Before You Start
 
-Run `zotero-cli app check-update` at the beginning of a session.
-If it reports an update, ask the user to run the upgrade command before proceeding.
+1. Run `zotero-cli --json app doctor` first. If `write_ready` is false, follow `next_steps` (start Zotero / install plugin / enable Local API).
+2. Prefer `zotero-cli --json ...` for machine-readable results (`ok`, `status`, `code`, `key`).
+3. Optionally run `zotero-cli app check-update` once per session.
 
 ## When to Use
 
@@ -77,14 +78,20 @@ zotero-cli --json item metrics ITEM_KEY
 ### Import Papers
 
 ```bash
-# Import by DOI (auto-fetches all metadata)
-zotero-cli import doi "10.1038/s41586-024-07871-6" --tag "review" --collection COLLECTION_KEY
+# DOI: library file/dedupe → Zotero translator → Crossref BibTeX fallback
+zotero-cli --json import doi "10.1038/s41586-024-07871-6" --tag "review" --collection COLLECTION_KEY
+
+# Force new copy even if DOI exists
+zotero-cli --json import doi "10.1038/s41586-024-07871-6" --if-exists duplicate
+
+# Skip Zotero translator (Crossref only)
+zotero-cli --json import doi "10.1038/s41586-024-07871-6" --no-translator
 
 # Import by PMID
 zotero-cli import pmid "38551621" --tag "epidemiology"
 
-# Import from file (RIS, BibTeX, etc.)
-zotero-cli import file ./references.ris --collection COLLECTION_KEY
+# Import from file (RIS, BibTeX; multi-entry BibTeX auto-splits)
+zotero-cli import file ./references.bib --collection COLLECTION_KEY
 ```
 
 ### Export & Citations
@@ -165,8 +172,8 @@ zotero-cli item attach ITEM_KEY /path/to/paper.pdf
 # Trigger "Find Available PDF" for one item
 zotero-cli item find-pdf ITEM_KEY
 
-# Batch find PDFs for all items missing them in a collection
-zotero-cli collection find-pdfs COLLECTION_KEY
+# Batch find PDFs (per-item; avoids bulk timeout)
+zotero-cli --json collection find-pdfs COLLECTION_KEY --timeout-per-item 45 --limit 20
 ```
 
 ### Write Operations
@@ -194,7 +201,7 @@ zotero-cli collection tree
 # Find collection by name
 zotero-cli collection find "query"
 
-# Items in a collection
+# Items in a collection (includes DOI, hasPdf, date)
 zotero-cli --json collection items COLLECTION_KEY
 
 # Collection statistics (total items, PDF coverage, year/journal distribution)
@@ -271,4 +278,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-1.0.0
+1.1.0+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.
