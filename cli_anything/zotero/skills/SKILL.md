@@ -245,7 +245,7 @@ zotero-cli repl
 ## Important Constraints
 
 - **All platforms**: Works on macOS, Windows, and Linux with the JS Bridge plugin installed.
-- **Zotero must be running**: All commands connect to Zotero's HTTP server (port 23119) or read its SQLite database.
+- **Zotero desktop must be running**: This is a hard prerequisite (not optional). Use `zotero-cli --json app doctor` / `app launch` if it is closed. Do **not** invent cloud-only or read-only degraded workflows.
 - **JS Bridge plugin required**: Install via `zotero-cli app install-plugin`. Once installed, all JS bridge commands work silently.
 - **Semantic search**: Requires `ZOTERO_EMBED_API`, `ZOTERO_EMBED_MODEL`, and `ZOTERO_EMBED_KEY` environment variables, plus a pre-built vector index at `ZOTERO_VECTOR_DB`.
 - **Item references**: Most commands accept a Zotero item key (8-char alphanumeric like `9LPV3KTS`), title fragment, or numeric ID.

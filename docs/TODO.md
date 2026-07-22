@@ -70,7 +70,13 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ## Later
 
 - [x] Package release v1.2.0
-- [ ] Optional degraded read mode when Zotero is closed
+- [ ] Skill refresh (retry chains / command preference matrix)
+
+## Cancelled / rejected
+
+| Idea | Reason |
+|------|--------|
+| Degraded read-only mode when Zotero is closed | Product decision: **desktop Zotero running is a hard prerequisite**; no cloud/Web-API-only fallback as primary path |
 
 ---
 

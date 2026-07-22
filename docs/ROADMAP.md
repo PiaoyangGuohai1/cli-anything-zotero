@@ -9,7 +9,15 @@ Current release: **v1.2.0** (CLI Bridge plugin **1.2.0**)
 > Not a second zotero-mcp (chat/MCP product). Not a pure Web-API wrapper (pyzotero-cli).
 
 **Do** deepen: idempotent batch writes, observability, PDF attach, DOCX cite chain.  
-**Don't** prioritize: MCP-first product, cloud-only mode as default, heavy semantic-search platform.
+**Don't** prioritize: MCP-first product, cloud-only mode as default, heavy semantic-search platform,
+**or running without the Zotero desktop app open**.
+
+### Non-negotiable runtime assumption
+
+**Zotero desktop must be running.** This tool is a local agent runtime *for* the desktop app
+(SQLite inventory + Connector + Local API + CLI Bridge). Offline/read-only degraded modes that
+hide a closed Zotero are **out of scope** — if Zotero is closed, `app doctor` should fail clearly
+and tell the user to start it.
 
 ## Done (baseline)
 
@@ -62,7 +70,6 @@ Theme: **unique DOCX path + agent packaging**.
 - [x] merge preview SQLite fallback when bridge is down
 - [x] Optional audit log for write ops (`audit tail` / `audit path`)
 - [ ] First-class Agent Skill refresh (retry chains, when to use which import)
-- [ ] Optional degraded mode when Zotero is closed (read-only Web API; never replace bridge as primary)
 
 ## Explicit non-goals (near term)
 
@@ -70,6 +77,7 @@ Theme: **unique DOCX path + agent packaging**.
 - Competing with zotero-mcp on semantic search / Scite / full annotation product
 - Reimplementing Zotero translators or citeproc in Python
 - Default dependency on commercial LLM APIs
+- **Degraded / read-only mode when Zotero is closed** (desktop running is required)
 
 ## Tracking
 

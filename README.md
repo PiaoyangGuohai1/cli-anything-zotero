@@ -37,6 +37,8 @@ This tool is designed to be **used by AI, not memorized by you**. After a simple
 
 Built on [CLI-Anything](https://github.com/HKUDS/CLI-Anything) by [HKUDS](https://github.com/HKUDS), this tool gives AI agents full access to your local Zotero library through a **JS Bridge** — a lightweight Zotero plugin that exposes a privileged JavaScript endpoint.
 
+**Prerequisite:** the **Zotero desktop app must be running**. This is intentional — we automate the local client (Connector, Local API, CLI Bridge), not a cloud-only API substitute.
+
 **Key capabilities:**
 - **Search & browse** — keyword search, full-text PDF search, collection tree, tags
 - **Import** — from DOI, PMID, RIS/BibTeX files, or JSON
