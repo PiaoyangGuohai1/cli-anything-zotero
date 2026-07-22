@@ -34,6 +34,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `item file <ref>` | Get attachment file path | SQLite |
 | `item fetch-pdf <key> [--sources ...] [--force]` | Zotero find-pdf + OA cascade, then attach | JS Bridge + HTTP |
 | `item find-pdf <key>` | Zotero built-in Find Available PDF only | JS Bridge |
+| `item duplicates [--by doi|title|zotero]` | Find duplicate groups | SQLite / JS Bridge |
+| `item merge KEEP OTHER... [--dry-run/--confirm]` | Merge items into keep key | JS Bridge |
+
 | `item attach <key> <pdf>` | Attach local PDF | JS Bridge |
 | `item context <ref>` | Build LLM-ready context | SQLite |
 | `item export <ref> --format bibtex` | Export RIS/BibTeX/CSL JSON/CSV | Local API |
@@ -42,12 +45,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `item search-fulltext <query>` | Search inside PDF text | JS Bridge |
 | `item search-annotations <query>` | Search highlights/notes across library | JS Bridge |
 | `item annotations <key>` | View annotations for an item | JS Bridge |
-| `item duplicates` | Find duplicate items | JS Bridge |
 | `item metrics <ref> [--pmid]` | NIH iCite citation metrics | iCite API |
 | `item update <key> --field k=v` | Update metadata fields | JS Bridge |
 | `item tag <key> --add/--remove` | Add or remove tags | JS Bridge |
-| `item attach <key> <pdf_path>` | Attach local PDF to item | JS Bridge |
-| `item find-pdf <key>` | Trigger "Find Available PDF" | JS Bridge |
 | `item delete <key> --confirm` | Delete item permanently | JS Bridge |
 | `item add-to-collection <ref> <col>` | Add item to collection | SQLite (experimental) |
 | `item move-to-collection <ref> <col>` | Move item between collections | SQLite (experimental) |
@@ -73,7 +73,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `collection create <name>` | Create new collection | SQLite (experimental) |
 | `collection stats <key>` | Statistics (item count, PDF coverage, year/journal distribution) | JS Bridge |
 | `collection find-pdfs <key> [--timeout-per-item N] [--limit N]` | Zotero Find Available PDF only (per item) | JS Bridge |
-| `collection fetch-pdfs <key> [--sources ...] [--limit N] [--jsonl-progress]` | Zotero + OA cascade for missing PDFs | JS Bridge + HTTP |
+| `collection fetch-pdfs <key> [--sources ...] [--limit N] [--jsonl-progress] [--resume]` | Zotero + OA cascade; optional resume state | JS Bridge + HTTP |
 | `collection remove-item <col_key> <item_key>` | Remove item from collection (keeps item) | JS Bridge |
 | `collection rename <key> --name/--parent` | Rename or move collection | JS Bridge |
 | `collection delete <key> --confirm` | Delete collection | JS Bridge |
@@ -85,7 +85,8 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 |---------|-------------|---------|
 | `add doi <doi> [--collection K] [--tag T] [--if-exists ...] [--fetch-pdf]` | Import DOI; optional PDF cascade | Bridge + Connector + OA |
 | `add arxiv <id> [--collection K] [--tag T] [--fetch-pdf/--no-fetch-pdf]` | Import arXiv preprint (+ PDF by default) | Bridge + Connector + OA |
-| `add file <path> [--collection K] [--tag T]` | Bib/RIS/JSON import or PDF attach/import | Connector / Bridge |
+| `add url <url> [--collection K] [--tag T] [--fetch-pdf]` | arXiv/DOI/webpage URL ingest | Bridge + Connector + OA |
+| `add file <path> [--collection K] [--tag T]` | Bib/RIS/JSON(CSL) import or PDF attach/import | Connector / Bridge |
 | `add bibtex <path> [--collection K] [--tag T]` | BibTeX file import | Connector |
 
 ## import -- Import Items

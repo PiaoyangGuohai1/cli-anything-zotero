@@ -1560,6 +1560,48 @@ class ImportCoreTests(unittest.TestCase):
         self.assertEqual(payload["action"], "add_doi")
         self.assertEqual(payload["key"], "NEWITEM1")
 
+    def test_csl_json_conversion(self):
+        from cli_anything.zotero.core.csl import csl_item_to_connector, normalize_import_json_payload
+
+        csl = {
+            "type": "article-journal",
+            "title": "Hello CSL",
+            "DOI": "10.1/csl",
+            "author": [{"family": "Doe", "given": "Jane"}],
+            "issued": {"date-parts": [[2024, 1, 2]]},
+            "container-title": "Nature Methods",
+        }
+        item = csl_item_to_connector(csl)
+        self.assertEqual(item["itemType"], "journalArticle")
+        self.assertEqual(item["DOI"], "10.1/csl")
+        self.assertEqual(item["date"], "2024-1-2")
+        items, fmt = normalize_import_json_payload([csl])
+        self.assertEqual(fmt, "csl-json")
+        self.assertEqual(items[0]["title"], "Hello CSL")
+
+    def test_merge_dry_run(self):
+        from cli_anything.zotero.core import hygiene
+
+        class FakeBridge:
+            def execute_js(self, *args, **kwargs):
+                raise AssertionError("dry-run must not execute merge js")
+
+        payload = hygiene.merge_items(FakeBridge(), "KEEPKEY1", ["OTHERKEY"], dry_run=True)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "dry_run")
+
+    def test_add_url_routes_doi(self):
+        from cli_anything.zotero.core import add as add_mod
+
+        with mock.patch(
+            "cli_anything.zotero.core.add.add_doi",
+            return_value={"ok": True, "action": "add_doi", "key": "D1", "status": "success"},
+        ) as mocked:
+            payload = add_mod.add_url(self.runtime, object(), "https://doi.org/10.1038/s41586-021-03819-2")
+        mocked.assert_called_once()
+        self.assertEqual(payload["action"], "add_url")
+        self.assertEqual(payload["url_kind"], "doi")
+
     def test_import_file_splits_multi_entry_bibtex(self):
         bib_path = Path(self.tmpdir.name) / "multi.bib"
         bib_path.write_text(

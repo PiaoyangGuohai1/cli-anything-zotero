@@ -37,22 +37,15 @@ def _read_text_file(path: Path) -> str:
 
 
 def _read_json_items(path: Path) -> list[dict[str, Any]]:
+    """Load connector items, auto-detecting CSL-JSON / Crossref / connector formats."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Invalid JSON import file: {path}: {exc}") from exc
-    if isinstance(payload, dict):
-        payload = payload.get("items")
-    if not isinstance(payload, list):
-        raise RuntimeError("JSON import expects an array of official Zotero connector item objects")
-    normalized: list[dict[str, Any]] = []
-    for index, item in enumerate(payload, start=1):
-        if not isinstance(item, dict):
-            raise RuntimeError(f"JSON import item {index} is not an object")
-        copied = dict(item)
-        copied.setdefault("id", f"cli-anything-zotero-{index}")
-        normalized.append(copied)
-    return normalized
+    from cli_anything.zotero.core.csl import normalize_import_json_payload
+
+    items, _fmt = normalize_import_json_payload(payload)
+    return items
 
 
 def _read_json_payload(path: Path, *, label: str) -> Any:
@@ -676,6 +669,15 @@ def import_json(
         connector_items=items,
         plans=plans,
     )
+    # Detect format label for agents
+    try:
+        from cli_anything.zotero.core.csl import normalize_import_json_payload
+
+        _raw = json.loads(source_path.read_text(encoding="utf-8"))
+        _, fmt = normalize_import_json_payload(_raw)
+    except Exception:
+        fmt = "unknown"
+
     return {
         "action": "import_json",
         "path": str(source_path),
@@ -684,6 +686,7 @@ def import_json(
         "target": target,
         "tags": normalized_tags,
         "submitted_count": len(items),
+        "format": fmt,
         "items": [
             {
                 "id": item.get("id"),

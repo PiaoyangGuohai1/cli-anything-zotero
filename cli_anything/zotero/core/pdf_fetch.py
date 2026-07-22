@@ -367,6 +367,39 @@ def fetch_pdf_for_item(
     )
 
 
+def _resume_state_path(collection_key: str) -> Path:
+    base = Path("~/.cache/cli-anything-zotero").expanduser()
+    base.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", collection_key)
+    return base / f"fetch-pdfs-{safe}.json"
+
+
+def load_resume_keys(collection_key: str) -> set[str]:
+    path = _resume_state_path(collection_key)
+    if not path.is_file():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return set(data.get("completed_keys") or [])
+    except Exception:
+        return set()
+
+
+def save_resume_key(collection_key: str, item_key: str) -> None:
+    path = _resume_state_path(collection_key)
+    keys = load_resume_keys(collection_key)
+    keys.add(item_key)
+    path.write_text(json.dumps({"collection": collection_key, "completed_keys": sorted(keys)}, indent=2), encoding="utf-8")
+
+
+def clear_resume_state(collection_key: str) -> None:
+    path = _resume_state_path(collection_key)
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 def fetch_pdfs_for_collection(
     runtime: Any,
     bridge: Any,
@@ -378,7 +411,12 @@ def fetch_pdfs_for_collection(
     zotero_timeout: int = 45,
     download_timeout: int = 45,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    resume: bool = False,
+    reset_resume: bool = False,
 ) -> dict[str, Any]:
+    if reset_resume:
+        clear_resume_state(collection_key)
+
     listed = bridge.list_items_missing_pdf(collection_key, library_id=library_id)
     if not listed.get("ok"):
         return result_payload(
@@ -400,6 +438,12 @@ def fetch_pdfs_for_collection(
             collection=collection_key,
         )
     missing = list((payload or {}).get("missing") or [])
+    skipped_resume = 0
+    if resume:
+        done = load_resume_keys(collection_key)
+        before = len(missing)
+        missing = [m for m in missing if m.get("key") not in done]
+        skipped_resume = before - len(missing)
     if limit is not None:
         missing = missing[: max(0, int(limit))]
 
@@ -419,6 +463,8 @@ def fetch_pdfs_for_collection(
         if one.get("ok") and one.get("status") in {"success", "already_has_pdf"}:
             if one.get("code") in {"FOUND", "ATTACHED", "ALREADY_HAS_PDF"}:
                 found += 1
+                if resume and key:
+                    save_resume_key(collection_key, key)
         row = {
             "index": index,
             "total": len(missing),
@@ -447,6 +493,9 @@ def fetch_pdfs_for_collection(
     else:
         status = "success"
         ok = True
+        if resume:
+            # full success for this wave — clear resume state
+            clear_resume_state(collection_key)
 
     return result_payload(
         action="collection_fetch_pdfs",
@@ -456,6 +505,9 @@ def fetch_pdfs_for_collection(
         collection=collection_key,
         checked=len(missing),
         found=found,
+        skipped_resume=skipped_resume,
+        resume=resume,
+        resume_state=str(_resume_state_path(collection_key)) if resume else None,
         missing_total=(payload or {}).get("missing_count"),
         details=details,
         sources=sources or list(_DEFAULT_SOURCES),

@@ -792,6 +792,8 @@ def collection_find_pdfs_command(
 @click.option("--zotero-timeout", default=45, show_default=True, type=int)
 @click.option("--download-timeout", default=45, show_default=True, type=int)
 @click.option("--jsonl-progress", is_flag=True, help="Print one JSON progress object per item to stdout.")
+@click.option("--resume", is_flag=True, help="Skip keys completed in prior --resume runs.")
+@click.option("--reset-resume", is_flag=True, help="Clear resume state for this collection before running.")
 @click.pass_context
 def collection_fetch_pdfs_command(
     ctx: click.Context,
@@ -801,6 +803,8 @@ def collection_fetch_pdfs_command(
     zotero_timeout: int,
     download_timeout: int,
     jsonl_progress: bool,
+    resume: bool,
+    reset_resume: bool,
 ) -> int:
     """Fetch PDFs for items missing attachments using Zotero + OA cascade."""
     from cli_anything.zotero.core import pdf_fetch
@@ -825,6 +829,8 @@ def collection_fetch_pdfs_command(
         zotero_timeout=zotero_timeout,
         download_timeout=download_timeout,
         progress_callback=_progress if jsonl_progress else None,
+        resume=resume,
+        reset_resume=reset_resume,
     )
     # When streaming progress, still emit final summary as JSON object
     emit(ctx, payload)
@@ -1374,12 +1380,67 @@ def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int
 
 
 @item.command("duplicates")
-@click.option("--limit", default=50, show_default=True, type=int, help="Maximum number of duplicates to return.")
+@click.option(
+    "--by",
+    "by",
+    type=click.Choice(["doi", "title", "zotero"]),
+    default="doi",
+    show_default=True,
+    help="Duplicate matching strategy.",
+)
+@click.option("--limit", default=50, show_default=True, type=int, help="Maximum number of duplicate groups/items.")
 @click.pass_context
-def item_duplicates_command(ctx: click.Context, limit: int) -> int:
-    """Find duplicate items in the Zotero library (via JS bridge)."""
-    result = current_bridge(ctx).find_duplicates(limit=limit)
-    return emit_js(ctx, result)
+def item_duplicates_command(ctx: click.Context, by: str, limit: int) -> int:
+    """Find duplicate items (DOI/title via SQLite, or Zotero native detector)."""
+    from cli_anything.zotero.core import hygiene
+    from cli_anything.zotero.core.results import exit_code_for
+
+    if by == "zotero":
+        result = current_bridge(ctx).find_duplicates(limit=limit)
+        data = result.get("data") if result.get("ok") else None
+        if isinstance(data, dict) and "error" in data and data.get("count", 0) == 0:
+            payload = {
+                "action": "item_duplicates",
+                "ok": False,
+                "status": "error",
+                "code": "ZOTERO_DUP_FAILED",
+                "by": "zotero",
+                "error": data.get("error"),
+            }
+            emit(ctx, payload)
+            return 1
+        emit(ctx, data if data is not None else result)
+        return 0 if result.get("ok") else 1
+
+    payload = hygiene.find_duplicates(
+        current_runtime(ctx),
+        by=by,
+        library_id=int(current_session().get("current_library", 1)),
+        limit=limit,
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
+@item.command("merge")
+@click.argument("keep_key")
+@click.argument("merge_keys", nargs=-1, required=True)
+@click.option("--dry-run/--confirm", default=True, show_default=True, help="Default dry-run; pass --confirm to apply.")
+@click.pass_context
+def item_merge_command(ctx: click.Context, keep_key: str, merge_keys: tuple[str, ...], dry_run: bool) -> int:
+    """Merge items into keep_key (move children, union tags/collections, trash others)."""
+    from cli_anything.zotero.core import hygiene
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = hygiene.merge_items(
+        current_bridge(ctx),
+        keep_key,
+        list(merge_keys),
+        library_id=int(current_session().get("current_library", 1)),
+        dry_run=dry_run,
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @cli.group()
@@ -1903,6 +1964,43 @@ def add_bibtex_command(
         collection_key=collection_key,
         tags=list(tags),
         session=current_session(),
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
+@add_group.command("url")
+@click.argument("url")
+@click.option("--collection", "collection_key", default=None)
+@click.option("--tag", "tags", multiple=True)
+@click.option("--if-exists", type=click.Choice(["file", "skip", "duplicate"]), default="file", show_default=True)
+@click.option("--fetch-pdf/--no-fetch-pdf", default=False, show_default=True)
+@click.option("--pdf-sources", default="zotero,unpaywall,epmc,biorxiv,arxiv", show_default=True)
+@click.pass_context
+def add_url_command(
+    ctx: click.Context,
+    url: str,
+    collection_key: str | None,
+    tags: tuple[str, ...],
+    if_exists: str,
+    fetch_pdf: bool,
+    pdf_sources: str,
+) -> int:
+    """Ingest from arXiv/DOI/webpage URL."""
+    from cli_anything.zotero.core import add as add_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    payload = add_mod.add_url(
+        current_runtime(ctx),
+        current_bridge(ctx),
+        url,
+        collection_key=collection_key,
+        tags=list(tags),
+        session=current_session(),
+        if_exists=if_exists,
+        fetch_pdf=fetch_pdf,
+        pdf_sources=pdf_sources,
+        library_id=int(current_session().get("current_library", 1)),
     )
     emit(ctx, payload)
     return exit_code_for(payload)

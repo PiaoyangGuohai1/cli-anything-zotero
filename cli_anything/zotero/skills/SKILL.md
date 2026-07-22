@@ -54,7 +54,8 @@ zotero-cli item similar ITEM_KEY --top-k 5
 zotero-cli item search-annotations "keyword" --color "#ff6666" --limit 10
 
 # Find duplicates
-zotero-cli item duplicates --limit 20
+zotero-cli --json item duplicates --by doi --limit 20
+zotero-cli --json item merge KEEP OTHER1 OTHER2   # dry-run default; --confirm to apply
 ```
 
 ### Read Item Details
@@ -83,6 +84,7 @@ zotero-cli --json add doi "10.1038/s41586-024-07871-6" --tag "review" --collecti
 zotero-cli --json add arxiv 2602.02093 --collection COLLECTION_KEY
 zotero-cli --json add file ./paper.pdf --collection COLLECTION_KEY
 zotero-cli --json add bibtex ./references.bib --collection COLLECTION_KEY
+zotero-cli --json add url https://doi.org/10.1038/s41586-021-03819-2
 
 # Lower-level DOI import still available
 zotero-cli --json import doi "10.1038/s41586-024-07871-6" --if-exists file --no-translator
@@ -171,7 +173,7 @@ zotero-cli --json item find-pdf ITEM_KEY
 zotero-cli --json item fetch-pdf ITEM_KEY --sources zotero,unpaywall,epmc,biorxiv,arxiv
 
 # Batch cascade for a collection (JSONL progress optional)
-zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progress
+zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progress --resume
 ```
 
 ### Write Operations

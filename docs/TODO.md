@@ -6,14 +6,22 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Now — v1.3.0 Ingest & PDF
+## Now — v1.4 hygiene + 1.3 tail
 
-- [x] `add doi|arxiv|file|bibtex`
+- [x] `add url`
+- [x] CSL-JSON / Crossref auto-import in `import json` / `add file`
+- [x] `item duplicates --by doi|title|zotero`
+- [x] `item merge --dry-run/--confirm`
+- [x] `collection fetch-pdfs --resume`
+- [x] Live smoke: add url + duplicates
+
+## Done — v1.3.0 Ingest & PDF
+
+- [x] `add doi|arxiv|file|bibtex|url`
 - [x] `item fetch-pdf` OA cascade
-- [x] `collection fetch-pdfs` + `--jsonl-progress`
+- [x] `collection fetch-pdfs` + `--jsonl-progress` + `--resume`
 - [x] attach/find-pdf result schema
 - [x] Live smoke: add arxiv + fetch-pdf
-- [ ] Optional: `add url`
 
 ## Done — v1.2.0 Agent contract
 
@@ -45,11 +53,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 ---
 
-## Later — v1.4 / 1.5 (queued)
+## Later — v1.5 (queued)
 
-- [ ] duplicates / merge
-- [ ] CSL-JSON import
 - [ ] DOCX polish + audit log
+- [ ] merge dry-run richer preview
 
 ---
 

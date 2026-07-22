@@ -32,24 +32,25 @@ Theme: **agents can safely batch-run write ops**.
 - [x] Docs + skill + ROADMAP/TODO hygiene
 - [ ] Remaining: roll result schema to attach/find-pdf/file import; optional hard-fail on plugin mismatch
 
-## 1.3.0 — Ingest & PDF (in progress)
+## 1.3.0 — Ingest & PDF (mostly done)
 
 Theme: **one verb to add literature + get PDFs**.
 
-- [x] Unified `add` entry: `doi` / `arxiv` / `file` / `bibtex` (`url` later)
+- [x] Unified `add` entry: `doi` / `arxiv` / `url` / `file` / `bibtex`
 - [x] PDF cascade: Zotero find-pdf → Unpaywall → EuropePMC/PMC → bioRxiv/arXiv
 - [x] `item fetch-pdf` / `collection fetch-pdfs` with `--jsonl-progress` + `--limit`
-- [ ] Resume / partial progress for long batches
+- [x] Resume for `collection fetch-pdfs --resume` / `--reset-resume`
 - [ ] Optional custom hook source
 
-## 1.4.0 — Library hygiene
+## 1.4.0 — Library hygiene (started)
 
 Theme: **keep the library clean under agent churn**.
 
-- [ ] `item duplicates --by doi|title`
-- [ ] `item merge` with `--dry-run`
-- [ ] CSL-JSON / Crossref JSON auto-import (not only connector schema)
+- [x] `item duplicates --by doi|title|zotero`
+- [x] `item merge KEEP OTHER... --dry-run/--confirm`
+- [x] CSL-JSON / Crossref JSON auto-import
 - [ ] Better partial/resume for multi-entry imports
+- [ ] Safer merge previews (list attachments/tags before confirm)
 
 ## 1.5.0 — Writing chain & polish
 

@@ -187,6 +187,136 @@ def add_arxiv(
     return payload
 
 
+def add_url(
+    runtime: Any,
+    bridge: Any,
+    url: str,
+    *,
+    collection_key: str | None = None,
+    tags: list[str] | tuple[str, ...] = (),
+    session: dict[str, Any] | None = None,
+    if_exists: str = "file",
+    fetch_pdf: bool = False,
+    pdf_sources: str | None = None,
+    library_id: int = 1,
+) -> dict[str, Any]:
+    """Ingest from a URL: arXiv / DOI / generic webpage."""
+    text = (url or "").strip()
+    if not text:
+        return result_payload(action="add_url", ok=False, status="error", code="INVALID_URL", error="empty url")
+
+    # arXiv
+    if "arxiv.org" in text.lower() or re.search(r"\d{4}\.\d{4,5}", text):
+        try:
+            normalize_arxiv_id(text)
+            payload = add_arxiv(
+                runtime,
+                bridge,
+                text,
+                collection_key=collection_key,
+                tags=tags,
+                session=session,
+                if_exists=if_exists,
+                fetch_pdf=fetch_pdf,
+                pdf_sources=pdf_sources,
+                library_id=library_id,
+            )
+            payload["action"] = "add_url"
+            payload["url"] = text
+            payload["url_kind"] = "arxiv"
+            return payload
+        except ValueError:
+            pass
+
+    # DOI URL or bare DOI in URL
+    doi_match = re.search(r"(10\.\d{4,9}/[^\s?#]+)", text)
+    if "doi.org" in text.lower() or doi_match:
+        doi = imports_mod.normalize_doi(doi_match.group(1) if doi_match else text)
+        payload = add_doi(
+            runtime,
+            bridge,
+            doi,
+            collection_key=collection_key,
+            tags=tags,
+            session=session,
+            if_exists=if_exists,
+            fetch_pdf=fetch_pdf,
+            pdf_sources=pdf_sources,
+            library_id=library_id,
+        )
+        payload["action"] = "add_url"
+        payload["url"] = text
+        payload["url_kind"] = "doi"
+        return payload
+
+    # Generic webpage item via connector
+    try:
+        imports_mod._require_connector(runtime)
+        title = text
+        try:
+            raw, final, _ = pdf_fetch._http_get_bytes(text, timeout=20, accept="text/html,*/*")
+            html = raw.decode("utf-8", errors="ignore")
+            m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+            if m:
+                title = re.sub(r"\s+", " ", m.group(1)).strip()[:300] or text
+            # DOI on page?
+            dm = re.search(r"(10\.\d{4,9}/[A-Za-z0-9./_;()-]+)", html)
+            if dm:
+                return add_url(
+                    runtime,
+                    bridge,
+                    f"https://doi.org/{imports_mod.normalize_doi(dm.group(1))}",
+                    collection_key=collection_key,
+                    tags=tags,
+                    session=session,
+                    if_exists=if_exists,
+                    fetch_pdf=fetch_pdf,
+                    pdf_sources=pdf_sources,
+                    library_id=library_id,
+                )
+        except Exception:
+            final = text
+
+        item = {
+            "itemType": "webpage",
+            "title": title,
+            "url": text,
+            "id": "cli-anything-url-1",
+            "accessDate": "",
+        }
+        session_id = imports_mod._session_id("add-url")
+        zotero_http.connector_save_items(runtime.environment.port, [item], session_id=session_id)
+        target = imports_mod._resolve_target(runtime, collection_key, session=session)
+        tags_n = imports_mod._normalize_tags(list(tags))
+        zotero_http.connector_update_session(
+            runtime.environment.port,
+            session_id=session_id,
+            target=target["treeViewID"],
+            tags=tags_n,
+        )
+        return result_payload(
+            action="add_url",
+            ok=True,
+            status="success",
+            code="IMPORTED",
+            url=text,
+            url_kind="webpage",
+            title=title,
+            source="connector-webpage",
+            final_url=final,
+            target=target,
+        )
+    except Exception as exc:
+        return result_payload(
+            action="add_url",
+            ok=False,
+            status="error",
+            code="IMPORT_FAILED",
+            url=text,
+            error=str(exc),
+        )
+
+
 def add_bibtex(
     runtime: Any,
     path: str | Path,
