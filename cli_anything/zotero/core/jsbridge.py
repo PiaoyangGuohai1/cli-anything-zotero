@@ -321,10 +321,14 @@ class JSBridgeClient:
         abs_path = os.path.abspath(pdf_path)
         if not os.path.isfile(abs_path):
             return {"ok": False, "error": f"File not found: {abs_path}"}
+        # On Windows, abspath returns backslashes which break JS string literals
+        # when embedded directly (\t → TAB, \n → newline, etc.).
+        # Must double-escape backslashes for JS, and escape single quotes.
+        safe_path = abs_path.replace("\\", "\\\\").replace("'", "\\'")
         js = (
             f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
             f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
-            f"var att = await Zotero.Attachments.importFromFile({{file: '{abs_path}', parentItemID: item.id}}); "
+            f"var att = await Zotero.Attachments.importFromFile({{file: '{safe_path}', parentItemID: item.id}}); "
             f"return 'OK: ' + att.key + ' attached to ' + item.getField('title').substring(0,60);"
         )
         return self.execute_js(js, wait_seconds=4)
