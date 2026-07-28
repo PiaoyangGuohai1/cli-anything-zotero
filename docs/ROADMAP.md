@@ -1,7 +1,7 @@
 # Roadmap — cli-anything-zotero
 
 Last updated: 2026-07-22  
-Current release: **v1.2.0** (CLI Bridge plugin **1.2.0**)
+Current release: **v1.2.1** (CLI Bridge plugin **1.2.1**)
 
 ## Positioning
 
@@ -26,6 +26,12 @@ and tell the user to start it.
 | ≤1.0.0 | CLI-first; MCP frozen at 0.9.5 |
 | **1.1.0** | DOI: dedupe → translator → Crossref BibTeX; bridge error serialization; per-item `find-pdfs`; BibTeX split; longer connector timeout |
 | **1.2.0** | Agent doctor + result contract; `add` ingest; PDF cascade; URL/CSL; duplicates/merge preview; `docx cite` one-shot |
+| **1.2.1** | Fix `add doi` crash when session `current_library` is `None`; Windows `attach_pdf` path escape (#4) |
+
+## 1.2.1 — Session library default + Windows attach
+
+- [x] `session_library_id()` when `current_library` is missing/`None` (fresh install crash on `add doi`, issue #5)
+- [x] Windows path escaping in `attach_pdf` JS string (#4)
 
 ## 1.2.0 — Agent contract (in progress → nearly done)
 

@@ -135,9 +135,9 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.2.0")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.2.0")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.2.0")
+            self.assertEqual(manifest["version"], "1.2.1")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.2.1")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.2.1")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
             self.assertEqual(zotero_app["strict_max_version"], "9.0.*")

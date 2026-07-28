@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "CLI Bridge for Zotero",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Registers /cli-bridge/eval HTTP endpoint for CLI-Anything Zotero integration",
   "applications": {
     "zotero": {
