@@ -921,6 +921,15 @@ class SessionTests(unittest.TestCase):
                 loaded = session_mod.load_session_state()
                 self.assertEqual(loaded["current_item"], "REG12345")
 
+    def test_session_library_id_handles_none_default_session(self):
+        # Fresh session always includes current_library: None — must not int(None).
+        self.assertEqual(session_mod.session_library_id(session_mod.default_session_state()), 1)
+        self.assertEqual(session_mod.session_library_id({"current_library": None}), 1)
+        self.assertEqual(session_mod.session_library_id({}), 1)
+        self.assertEqual(session_mod.session_library_id({"current_library": 2}), 2)
+        self.assertEqual(session_mod.session_library_id({"current_library": "3"}), 3)
+        self.assertEqual(session_mod.session_library_id(None, default=1), 1)
+
     def test_expand_repl_aliases(self):
         state = {"current_library": "1", "current_collection": "2", "current_item": "REG12345"}
         expanded = session_mod.expand_repl_aliases_with_state(["item", "get", "@item", "@collection"], state)

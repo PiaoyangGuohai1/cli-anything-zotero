@@ -818,7 +818,7 @@ def collection_create_command(
     else:
         # Prefer JS Bridge (works while Zotero is running)
         result = current_bridge(ctx).create_collection(
-            name, parent_key=parent_ref, library_id=int(current_session().get("current_library", 1)),
+            name, parent_key=parent_ref, library_id=session_mod.session_library_id(current_session()),
         )
         if not result.get("ok", True):
             raise RuntimeError(result.get("error", "Failed to create collection"))
@@ -900,7 +900,7 @@ def collection_fetch_pdfs_command(
         current_bridge(ctx),
         collection_key,
         sources=source_list,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
         limit=limit,
         zotero_timeout=zotero_timeout,
         download_timeout=download_timeout,
@@ -1163,7 +1163,7 @@ def item_fetch_pdf_command(
         current_bridge(ctx),
         item_key,
         sources=source_list,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
         zotero_timeout=zotero_timeout,
         download_timeout=download_timeout,
         force=force,
@@ -1491,7 +1491,7 @@ def item_duplicates_command(ctx: click.Context, by: str, limit: int) -> int:
     payload = hygiene.find_duplicates(
         current_runtime(ctx),
         by=by,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
         limit=limit,
     )
     emit(ctx, payload)
@@ -1512,7 +1512,7 @@ def item_merge_command(ctx: click.Context, keep_key: str, merge_keys: tuple[str,
         current_bridge(ctx),
         keep_key,
         list(merge_keys),
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
         dry_run=dry_run,
         runtime=current_runtime(ctx),
     )
@@ -2000,7 +2000,7 @@ def add_doi_command(
         prefer_translator=prefer_translator,
         fetch_pdf=fetch_pdf,
         pdf_sources=pdf_sources,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
     )
     emit(ctx, payload)
     return exit_code_for(payload)
@@ -2036,7 +2036,7 @@ def add_arxiv_command(
         if_exists=if_exists,
         fetch_pdf=fetch_pdf,
         pdf_sources=pdf_sources,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
     )
     emit(ctx, payload)
     return exit_code_for(payload)
@@ -2066,7 +2066,7 @@ def add_file_command(
         tags=list(tags),
         session=current_session(),
         if_exists=if_exists,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
     )
     emit(ctx, payload)
     return exit_code_for(payload)
@@ -2128,7 +2128,7 @@ def add_url_command(
         if_exists=if_exists,
         fetch_pdf=fetch_pdf,
         pdf_sources=pdf_sources,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
     )
     emit(ctx, payload)
     return exit_code_for(payload)
@@ -2259,7 +2259,7 @@ def import_doi_command(
         if_exists=if_exists,
         prefer_translator=prefer_translator,
         connector_timeout=connector_timeout,
-        library_id=int(current_session().get("current_library", 1)),
+        library_id=session_mod.session_library_id(current_session()),
     )
     warn = doctor_mod.plugin_version_warning(current_runtime(ctx))
     if warn:

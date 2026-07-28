@@ -26,6 +26,20 @@ def default_session_state() -> dict[str, Any]:
     return {"current_library": None, "current_collection": None, "current_item": None, "command_history": []}
 
 
+def session_library_id(session: dict[str, Any] | None, default: int = 1) -> int:
+    """Return the session library id, falling back when unset/None.
+
+    ``dict.get("current_library", 1)`` is wrong here: the default session state
+    always includes the key with value ``None``, so ``.get`` never uses the
+    fallback and ``int(None)`` raises TypeError.
+    """
+    session = session or {}
+    value = session.get("current_library")
+    if value is None or value == "":
+        return int(default)
+    return int(value)
+
+
 def load_session_state() -> dict[str, Any]:
     path = session_state_path()
     try:
