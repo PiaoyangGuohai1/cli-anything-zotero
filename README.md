@@ -45,9 +45,47 @@ Built on [CLI-Anything](https://github.com/HKUDS/CLI-Anything) by [HKUDS](https:
 - **Export** — BibTeX, CSL-JSON, RIS, CSV, formatted citations
 - **PDF management** — attach files, auto-find PDFs online, search annotations
 - **Write operations** — update metadata, manage tags, add notes, trigger sync
+- **DOCX citations** — turn `{{zotero:ITEMKEY}}` placeholders into static text or refreshable Zotero fields (see below)
 - **Advanced** — execute arbitrary Zotero JS, semantic search with local embeddings, AI analysis
 
 All write operations run locally through the JS Bridge — no API key or internet connection required.
+
+### DOCX citations: static vs dynamic
+
+AI-authored drafts should use placeholders such as `{{zotero:ITEMKEY}}` or
+`{{zotero:KEY1,KEY2}}`, then convert them with the `docx` commands.
+
+| Mode | Command | Output | Extra software |
+|------|---------|--------|----------------|
+| **Static** (default for simple finals) | `docx render-citations` or `docx cite --mode static` | Plain-text citations + static bibliography | **No.** Only `pip install` + JS Bridge + running Zotero (Local API). |
+| **Dynamic** (refreshable fields) | `docx insert-citations` or `docx cite --mode dynamic` | Real Zotero fields in Word/LibreOffice + refreshable bibliography | **Yes — extra stack required** (see table below). |
+| **Auto** | `docx cite --mode auto` | Picks dynamic if the stack is ready, else static | Same as dynamic when available |
+
+**Dynamic mode is optional and is not installed by `pip` alone.** You also need:
+
+| Requirement | Why |
+|-------------|-----|
+| Zotero Desktop (running) | Source library + word-processor integration |
+| CLI Bridge plugin (`zotero-cli app install-plugin`) | Local privileged bridge used by conversion |
+| [LibreOffice](https://www.libreoffice.org/) | Opens/saves the DOCX during field insertion |
+| [Zotero LibreOffice plugin](https://www.zotero.org/support/word_processor_plugin_installation) | Creates refreshable citation/bibliography fields |
+
+Check the machine before relying on dynamic mode:
+
+```bash
+zotero-cli --json docx doctor
+```
+
+If `doctor` reports missing LibreOffice / the LO add-in / Bridge, use **static**
+mode (or install the missing pieces). On macOS the full dynamic path is tested
+end-to-end; on Windows/Linux, `doctor` works but auto open/save may still need
+manual LibreOffice interaction until verified.
+
+One-shot when you are unsure:
+
+```bash
+zotero-cli --json docx cite draft.docx --output draft-cited.docx --mode auto --force
+```
 
 ---
 
@@ -169,18 +207,16 @@ zotero-cli docx insert-citations draft.docx --output draft-zotero.docx --force
 
 For AI-authored DOCX workflows, use Zotero-bound placeholders such as
 `{{zotero:ITEMKEY}}` or `{{zotero:KEY1,KEY2}}`, then choose the final output
-mode:
+mode (details and **extra software requirements** are under
+[DOCX citations: static vs dynamic](#docx-citations-static-vs-dynamic)):
 
-- Static citations: `docx render-citations` replaces placeholders with ordinary citation text and appends a static bibliography. It only needs Zotero's Local API, so it is the easiest path for lightweight reports or one-off documents. Static output cannot be refreshed by the Zotero word processor plugin.
-- Dynamic citations: `docx insert-citations` converts placeholders into real Zotero/LibreOffice fields and creates or updates a refreshable bibliography field. This is the better path for theses, manuscripts, and documents that will be edited or restyled later.
+- Static citations: `docx render-citations` replaces placeholders with ordinary citation text and appends a static bibliography. Easiest path; **no LibreOffice**. Cannot be refreshed by the Zotero word processor plugin.
+- Dynamic citations: `docx insert-citations` converts placeholders into real Zotero/LibreOffice fields and creates or updates a refreshable bibliography field. Needs **LibreOffice + Zotero LO add-in + Bridge** on top of Zotero Desktop.
 
 AI agents should ask the user which mode they want when the request is
 ambiguous. If the user only wants a simple final DOCX and has not installed
-LibreOffice, prefer static citations. Dynamic DOCX citation insertion is an
-optional LibreOffice-backed workflow: it requires Zotero Desktop, LibreOffice,
-the Zotero LibreOffice Add-in, and the CLI Bridge plugin. Run `docx doctor`
-when setting up a machine or when an AI agent needs to decide whether the
-workflow is installed.
+LibreOffice, prefer static citations. Always run `docx doctor` before promising
+dynamic conversion.
 
 Recommended AI protocol:
 

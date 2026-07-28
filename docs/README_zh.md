@@ -29,6 +29,45 @@
 2. 打开你的 AI 工具（Claude Code、Cursor 等），用自然语言说你想做什么
 3. 没了
 
+> **注意：** 日常管文献（搜、导入、导出、挂 PDF）只需要上面这些。  
+> **动态 DOCX 引用**（可在 LibreOffice/Word 里 Refresh 的 Zotero 字段）还要额外装软件，见下一节。
+
+---
+
+## DOCX 引用：静态 vs 动态
+
+AI 写稿时请在 DOCX 里插入占位符 `{{zotero:ITEMKEY}}` 或 `{{zotero:KEY1,KEY2}}`，再用 `docx` 命令转换成最终引用。
+
+| 模式 | 命令 | 输出 | 是否要额外软件 |
+|------|------|------|----------------|
+| **静态**（简单终稿默认） | `docx render-citations` 或 `docx cite --mode static` | 普通文字引用 + 静态参考文献 | **不用。** 装好 pip 包 + JS Bridge + 打开 Zotero 即可 |
+| **动态**（可刷新字段） | `docx insert-citations` 或 `docx cite --mode dynamic` | 真正的 Zotero 字段 + 可 Refresh 参考文献 | **要。** 见下表 |
+| **自动** | `docx cite --mode auto` | 环境齐则动态，否则静态 | 能动态时同动态要求 |
+
+**动态模式不是 `pip install` 就自带的**，还需要：
+
+| 依赖 | 作用 |
+|------|------|
+| Zotero 桌面端（运行中） | 文献库 + 字处理集成 |
+| CLI Bridge 插件（`zotero-cli app install-plugin`） | 本地转换桥 |
+| [LibreOffice](https://www.libreoffice.org/) | 打开/保存 DOCX 并写入字段 |
+| [Zotero 的 LibreOffice 插件](https://www.zotero.org/support/word_processor_plugin_installation) | 生成可刷新的引用/参考文献字段 |
+
+安装或换机器后先检查：
+
+```bash
+zotero-cli --json docx doctor
+```
+
+`doctor` 若提示缺 LibreOffice / LO 插件 / Bridge，请改用**静态**模式，或把缺的组件装齐。  
+macOS 上动态全流程已测通；Windows/Linux 上 `doctor` 可用，但自动打开/保存 LibreOffice 仍可能需人工操作。
+
+不确定用哪种时：
+
+```bash
+zotero-cli --json docx cite draft.docx --output draft-cited.docx --mode auto --force
+```
+
 ---
 
 ## CLI 优先使用方式
@@ -138,15 +177,14 @@ zotero-cli docx insert-citations draft.docx --output draft-zotero.docx --force
 ```
 
 AI 生成 DOCX 时，应插入 `{{zotero:ITEMKEY}}` 或
-`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符，最后再选择输出模式：
+`{{zotero:KEY1,KEY2}}` 这样的 Zotero 绑定占位符，最后再选择输出模式
+（完整依赖表见上文 [DOCX 引用：静态 vs 动态](#docx-引用静态-vs-动态)）：
 
-- 静态引用：`docx render-citations` 会把占位符替换成普通文本引用，并在文末追加静态参考文献。它只需要 Zotero Local API，适合轻量报告、课程作业、一次性交付文档；缺点是不能用 Zotero Refresh。
-- 动态引用：`docx insert-citations` 会把占位符转换成真正的 Zotero/LibreOffice 字段，并创建或更新可刷新的参考文献字段。适合论文、毕业论文、正式稿件，以及后续还要修改格式的文档。
+- 静态引用：`docx render-citations` → 普通文本 + 静态参考文献；**不需要 LibreOffice**；不能 Refresh。
+- 动态引用：`docx insert-citations` → 可刷新的 Zotero 字段；**额外需要 LibreOffice + Zotero LO 插件 + Bridge**。
 
-当用户只说“帮我插入文献”而没有说明模式时，AI 应先询问要静态引用还是动态引用。如果用户只是要简单最终 DOCX，且没有安装 LibreOffice，优先推荐静态引用。
-动态 DOCX 引用插入是一个可选的 LibreOffice 后端工作流：用户还需要安装
-Zotero Desktop、LibreOffice、Zotero LibreOffice Add-in，以及 CLI Bridge
-插件。新机器或 AI 自动执行前，先跑 `docx doctor` 判断环境是否齐全。
+当用户只说“帮我插入文献”而没有说明模式时，AI 应先询问要静态还是动态。  
+没有装 LibreOffice 时优先静态。承诺动态转换前必须先跑 `docx doctor`。
 
 AI 推荐流程（用户给定占位符文稿后）：
 
