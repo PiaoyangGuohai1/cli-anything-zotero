@@ -86,7 +86,7 @@ pip install "cli-anything-zotero[mcp]==0.9.5"
 
 ## 安装
 
-**前提：** Python 3.10+，Zotero 7/8/9（运行中）。
+**前提：** Python 3.10+，Zotero 7+（运行中）。
 
 ### 第一步：安装
 
@@ -138,6 +138,7 @@ zotero-cli js "return Zotero.version"
 | `Cannot resolve Zotero profile directory` | 先启动一次 Zotero |
 | 插件没显示 | 安装 `.xpi` 后重启 Zotero |
 | `endpoint_active: false` | 插件加载失败 — 通过 Zotero UI 重新安装 |
+| Zotero 大版本升级后出现 `No endpoint found` | Zotero 判定插件不兼容并禁用了它；跑 `zotero-cli app doctor`（会报 `app_disabled`），升级 cli-anything-zotero，再执行 `zotero-cli app install-plugin` 并重启 Zotero |
 | Windows: `pip` 不识别 | 安装 Python 后关闭并重新打开 PowerShell |
 
 ---
