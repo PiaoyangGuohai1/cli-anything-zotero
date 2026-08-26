@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import tempfile
 import unittest
@@ -126,7 +127,7 @@ class PathDiscoveryTests(unittest.TestCase):
             self.assertIsNotNone(path)
             self.assertIn('extensions.zotero.httpServer.localAPI.enabled', path.read_text(encoding="utf-8"))
 
-    def test_install_plugin_xpi_supports_zotero_9_patch_releases(self):
+    def test_install_plugin_xpi_supports_current_and_future_zotero_majors(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             env = create_sample_environment(Path(tmpdir))
             xpi_path = zotero_paths.install_plugin_xpi(env["profile_dir"])
@@ -135,12 +136,39 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.2.1")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.2.1")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.2.1")
+            self.assertEqual(manifest["version"], "1.2.2")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.2.2")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.2.2")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
-            self.assertEqual(zotero_app["strict_max_version"], "9.0.*")
+            # Zotero 10 disables plugins whose max version is below the running major.
+            self.assertEqual(zotero_app["strict_max_version"], "9999.*")
+
+    def test_plugin_app_disabled_detects_zotero_disabled_plugin(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            profile_dir = env["profile_dir"]
+            self.assertFalse(zotero_paths.plugin_app_disabled(profile_dir))
+
+            (profile_dir / "extensions.json").write_text(
+                json.dumps({"addons": [{"id": zotero_paths.PLUGIN_ADDON_ID, "appDisabled": True}]}),
+                encoding="utf-8",
+            )
+            self.assertTrue(zotero_paths.plugin_app_disabled(profile_dir))
+
+    def test_fetch_saved_searches_tolerates_missing_required_column(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            env = create_sample_environment(Path(tmpdir))
+            sqlite_path = env["data_dir"] / "zotero.sqlite"
+            # Zotero 10 dropped savedSearchConditions.required.
+            with sqlite3.connect(sqlite_path) as conn:
+                conn.execute("ALTER TABLE savedSearchConditions DROP COLUMN required")
+
+            searches = zotero_sqlite.fetch_saved_searches(sqlite_path, library_id=1)
+            self.assertTrue(searches)
+            conditions = searches[0]["conditions"]
+            self.assertTrue(conditions)
+            self.assertIsNone(conditions[0]["required"])
 
     def test_find_executable_returns_none_when_unresolved(self):
         with mock.patch.dict("os.environ", {}, clear=True):

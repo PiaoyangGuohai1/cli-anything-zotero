@@ -344,6 +344,25 @@ def installed_plugin_version(profile_dir: Path | None) -> str | None:
     return str(version) if version else None
 
 
+def plugin_app_disabled(profile_dir: Path | None) -> bool:
+    """Return True when Zotero itself disabled the CLI Bridge plugin.
+
+    Zotero writes ``appDisabled: true`` into ``extensions.json`` when the running
+    Zotero version falls outside the plugin manifest's strict version range, which
+    silently leaves the .xpi on disk while /cli-bridge/eval is never registered.
+    """
+    if profile_dir is None:
+        return False
+    try:
+        payload = json.loads((profile_dir / "extensions.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for addon in payload.get("addons") or []:
+        if addon.get("id") == PLUGIN_ADDON_ID:
+            return bool(addon.get("appDisabled"))
+    return False
+
+
 def plugin_update_available(profile_dir: Path | None) -> bool:
     """Return True when the installed CLI Bridge version differs from the bundled one."""
     installed = installed_plugin_version(profile_dir)

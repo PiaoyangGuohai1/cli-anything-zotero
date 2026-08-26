@@ -574,6 +574,11 @@ def resolve_attachment_real_path(item: dict[str, Any], data_dir: Path | str) -> 
     return str((data_dir / raw_path).resolve())
 
 
+def _table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return the column names of a table, tolerating schema drift across Zotero versions."""
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
 def fetch_saved_searches(sqlite_path: Path | str, library_id: int | None = None) -> list[dict[str, Any]]:
     with closing(connect_readonly(sqlite_path)) as conn:
         rows = conn.execute(
@@ -586,10 +591,13 @@ def fetch_saved_searches(sqlite_path: Path | str, library_id: int | None = None)
             (library_id, library_id),
         ).fetchall()
         searches = _as_dicts(rows)
+        # Zotero 10 dropped savedSearchConditions.required; keep the key for output stability.
+        has_required = "required" in _table_columns(conn, "savedSearchConditions")
+        required_column = "required" if has_required else "NULL AS required"
         for search in searches:
             condition_rows = conn.execute(
-                """
-                SELECT searchConditionID, condition, operator, value, required
+                f"""
+                SELECT searchConditionID, condition, operator, value, {required_column}
                 FROM savedSearchConditions
                 WHERE savedSearchID = ?
                 ORDER BY searchConditionID
