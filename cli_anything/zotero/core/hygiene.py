@@ -2,26 +2,18 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
 from typing import Any
 
+from cli_anything.zotero.core.duplicates import normalize_doi as _norm_doi
+from cli_anything.zotero.core.duplicates import normalize_title as _norm_title
 from cli_anything.zotero.core.results import result_payload
 from cli_anything.zotero.utils import zotero_sqlite
 
-
-def _norm_doi(value: str | None) -> str:
-    text = (value or "").strip().lower()
-    text = re.sub(r"^https?://(dx\.)?doi\.org/", "", text)
-    text = re.sub(r"^doi:\s*", "", text)
-    return text.rstrip(" .),;")
-
-
-def _norm_title(value: str | None) -> str:
-    text = (value or "").strip().lower()
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"[^\w\s]", "", text)
-    return text
+# Normalization lives in core/duplicates.py so the SQLite paths here and the
+# bridge path there fold titles and DOIs identically. Two normalizers meant a
+# resolver-prefixed DOI never matched the same bare DOI on the SQLite path.
+__all__ = ["find_duplicates", "preview_merge", "merge_items", "json_dumps_js"]
 
 
 def find_duplicates(
@@ -42,14 +34,19 @@ def find_duplicates(
         )
 
     if by == "zotero":
-        # Caller should use bridge.find_duplicates; this is a placeholder envelope
+        # This function only reads SQLite. The 'zotero' strategy needs the live
+        # bridge, so say so and fail -- returning ok=True here would be another
+        # empty success indistinguishable from a clean library.
         return result_payload(
             action="item_duplicates",
-            ok=True,
-            status="success",
+            ok=False,
+            status="error",
             code="USE_BRIDGE",
             by="zotero",
-            message="Use bridge Zotero.Duplicates via item duplicates --by zotero",
+            error=(
+                "The 'zotero' strategy runs over the JS bridge; call "
+                "core.duplicates.find_duplicates(bridge) or JSBridgeClient.find_duplicates()."
+            ),
         )
 
     items = zotero_sqlite.fetch_items(runtime.environment.sqlite_path, library_id=library_id)

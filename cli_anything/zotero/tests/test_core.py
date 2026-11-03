@@ -136,9 +136,9 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.2.2")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.2.2")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.2.2")
+            self.assertEqual(manifest["version"], "1.3.0")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.3.0")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.3.0")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
             # Zotero 10 disables plugins whose max version is below the running major.
@@ -1921,3 +1921,314 @@ class OpenAIUtilityTests(unittest.TestCase):
         }
         result = openai_api._extract_text(payload)
         self.assertEqual(result, "Hello world")
+
+
+class DeleteSemanticsTests(unittest.TestCase):
+    """`delete` must trash by default; erasing must take a separate, explicit path."""
+
+    def _captured_js(self, method, *args, **kwargs):
+        seen = {}
+
+        def fake_execute(self, code, **kw):
+            seen["code"] = code
+            return {"ok": True, "data": "TRASHED: x", "error": None}
+
+        with mock.patch.object(jsbridge.JSBridgeClient, "execute_js", fake_execute):
+            getattr(jsbridge.JSBridgeClient(), method)(*args, **kwargs)
+        return seen["code"]
+
+    def test_delete_item_defaults_to_trash_not_erase(self):
+        code = self._captured_js("delete_item", "ITEMKEY1")
+        self.assertIn("item.deleted = true", code)
+        self.assertIn("saveTx", code)
+        self.assertNotIn("eraseTx", code)
+
+    def test_delete_item_permanent_uses_erase(self):
+        code = self._captured_js("delete_item", "ITEMKEY1", permanent=True)
+        self.assertIn("eraseTx", code)
+        self.assertNotIn("item.deleted = true", code)
+
+    def test_restore_item_untrashes(self):
+        code = self._captured_js("restore_item", "ITEMKEY1")
+        self.assertIn("item.deleted = false", code)
+        self.assertIn("saveTx", code)
+        self.assertNotIn("eraseTx", code)
+
+    def test_delete_collection_defaults_to_trash_not_erase(self):
+        code = self._captured_js("delete_collection", "COLLKEY1")
+        self.assertIn("col.deleted = true", code)
+        self.assertNotIn("eraseTx", code)
+
+    def test_delete_collection_permanent_uses_erase(self):
+        code = self._captured_js("delete_collection", "COLLKEY1", permanent=True)
+        self.assertIn("eraseTx", code)
+
+    def test_delete_collection_permanent_honours_delete_items(self):
+        keep = self._captured_js("delete_collection", "COLLKEY1", permanent=True)
+        self.assertIn("deleteItems: false", keep)
+        cascade = self._captured_js(
+            "delete_collection", "COLLKEY1", permanent=True, delete_items=True
+        )
+        self.assertNotIn("deleteItems: false", cascade)
+
+    def test_restore_collection_untrashes(self):
+        code = self._captured_js("restore_collection", "COLLKEY1")
+        self.assertIn("col.deleted = false", code)
+        self.assertNotIn("eraseTx", code)
+
+
+class DestructiveGateTests(unittest.TestCase):
+    """--confirm must never be sufficient to erase."""
+
+    def setUp(self):
+        from cli_anything.zotero import zotero_cli
+
+        self.gate = zotero_cli.gate_destructive
+        self.cli_mod = zotero_cli
+
+    def _gate(self, **kwargs):
+        params = {"noun": "item", "target": "K1", "permanent": False, "confirm": False, "yes_erase": False}
+        params.update(kwargs)
+        return self.gate(**params)
+
+    def test_trash_with_confirm_proceeds(self):
+        self.assertIsNone(self._gate(confirm=True))
+
+    def test_trash_without_confirm_noninteractive_aborts(self):
+        import click as click_mod
+
+        with mock.patch.object(self.cli_mod, "_stdin_is_interactive", return_value=False):
+            with self.assertRaises(click_mod.ClickException):
+                self._gate()
+
+    def test_permanent_with_confirm_alone_does_not_erase(self):
+        """The core guard: a habitual --confirm must not authorize an erase."""
+        import click as click_mod
+
+        with mock.patch.object(self.cli_mod, "_stdin_is_interactive", return_value=False):
+            with self.assertRaises(click_mod.ClickException) as ctx:
+                self._gate(permanent=True, confirm=True)
+        self.assertIn("--yes-erase", str(ctx.exception))
+
+    def test_permanent_still_prompts_interactively_despite_confirm(self):
+        import click as click_mod
+
+        with mock.patch.object(self.cli_mod, "_stdin_is_interactive", return_value=True):
+            with mock.patch.object(click_mod, "confirm", return_value=False) as prompt:
+                with self.assertRaises(click_mod.ClickException):
+                    self._gate(permanent=True, confirm=True)
+        prompt.assert_called_once()
+
+    def test_permanent_with_yes_erase_proceeds(self):
+        self.assertIsNone(self._gate(permanent=True, yes_erase=True))
+
+
+class DuplicateDetectionTests(unittest.TestCase):
+    """Replacement for the private Zotero.Duplicates._findDuplicates() call."""
+
+    def setUp(self):
+        from cli_anything.zotero.core import duplicates
+
+        self.dup = duplicates
+
+    # ── normalization ──
+    def test_normalize_title_folds_diacritics_latex_and_punctuation(self):
+        self.assertEqual(
+            self.dup.normalize_title(r"Ni\~{n}o's \emph{Health}: A Review!"),
+            self.dup.normalize_title("Ninos Health  A  Review"),
+        )
+        self.assertEqual(
+            self.dup.normalize_title("<i>Plasmodium</i> falciparum"),
+            "plasmodium falciparum",
+        )
+
+    def test_normalize_doi_folds_every_resolver_form(self):
+        expected = "10.1787/ae3016b9-en"
+        for raw in (
+            "10.1787/ae3016b9-en",
+            "10.1787/AE3016B9-EN",
+            "doi:10.1787/ae3016b9-en",
+            "https://doi.org/10.1787/ae3016b9-en",
+            "http://dx.doi.org/10.1787/ae3016b9-en",
+            # doubled prefix: a single prefix-strip leaves this unequal to the bare DOI
+            "https://doi.org/https://doi.org/10.1787/ae3016b9-en",
+        ):
+            self.assertEqual(self.dup.normalize_doi(raw), expected, raw)
+        self.assertEqual(
+            self.dup.normalize_doi("http://doi.acm.org/10.1145/585597.585602"),
+            "10.1145/585597.585602",
+        )
+
+    # ── clustering ──
+    @staticmethod
+    def _rec(key, title="A sufficiently long title", doi="", year=2020, creators=("Smith",), **kw):
+        rec = {
+            "key": key,
+            "itemType": "journalArticle",
+            "title": title,
+            "date": str(year),
+            "year": year,
+            "DOI": doi,
+            "creators": list(creators),
+            "numAttachments": 0,
+            "numPdfAttachments": 0,
+            "citationKey": None,
+            "citationKeyPinned": False,
+        }
+        rec.update(kw)
+        return rec
+
+    def test_clusters_on_exact_doi(self):
+        clusters = self.dup.cluster_records([
+            self._rec("A", title="One thing", doi="10.1000/x"),
+            self._rec("B", title="Totally different heading", doi="https://doi.org/10.1000/x"),
+        ])
+        self.assertEqual(len(clusters), 1)
+        self.assertIn("doi", clusters[0]["match_reason"])
+
+    def test_clusters_on_title_confirmed_by_creator_and_year(self):
+        clusters = self.dup.cluster_records([
+            self._rec("A", title="The performance of performance standards"),
+            self._rec("B", title="The Performance of Performance Standards!"),
+        ])
+        self.assertEqual(len(clusters), 1)
+        self.assertIn("title+creator+year", clusters[0]["match_reason"])
+
+    def test_same_title_different_authors_is_not_a_duplicate(self):
+        clusters = self.dup.cluster_records([
+            self._rec("A", title="Introduction to the symposium", creators=("Smith",)),
+            self._rec("B", title="Introduction to the symposium", creators=("Jones",)),
+        ])
+        self.assertEqual(clusters, [])
+
+    def test_same_title_and_author_different_year_is_not_a_duplicate_at_tolerance_zero(self):
+        records = [
+            self._rec("A", title="Annual survey of practice", year=2018),
+            self._rec("B", title="Annual survey of practice", year=2021),
+        ]
+        self.assertEqual(self.dup.cluster_records(records, year_tolerance=0), [])
+        self.assertEqual(self.dup.cluster_records(records, year_tolerance=3)[0]["count"], 2)
+
+    def test_missing_year_or_creator_never_clusters_on_title_alone(self):
+        self.assertEqual(
+            self.dup.cluster_records([
+                self._rec("A", title="A shared long title", year=None, date=""),
+                self._rec("B", title="A shared long title"),
+            ]),
+            [],
+        )
+        self.assertEqual(
+            self.dup.cluster_records([
+                self._rec("A", title="A shared long title", creators=()),
+                self._rec("B", title="A shared long title"),
+            ]),
+            [],
+        )
+
+    def test_preprint_published_pair_clusters_at_default_tolerance(self):
+        clusters = self.dup.cluster_records(
+            [
+                self._rec("A", title="Medical worker migration", doi="10.31235/osf.io/m79h2", year=2020),
+                self._rec("B", title="Medical worker migration", doi="10.1162/rest_a_01131", year=2021),
+            ],
+            year_tolerance=1,
+        )
+        self.assertEqual(len(clusters), 1)
+
+    def test_clusters_are_transitive_across_rules(self):
+        clusters = self.dup.cluster_records([
+            self._rec("A", title="Shared long title here", doi="10.1000/x"),
+            self._rec("B", title="Shared long title here", doi=""),
+            self._rec("C", title="Unrelated other title", doi="10.1000/x"),
+        ])
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0]["count"], 3)
+
+    def test_pinned_citation_key_conflict_is_flagged(self):
+        clusters = self.dup.cluster_records([
+            self._rec("A", title="Shared long title here", citationKey="smith2020a", citationKeyPinned=True),
+            self._rec("B", title="Shared long title here", citationKey="smith2020b", citationKeyPinned=True),
+        ])
+        self.assertTrue(clusters[0]["citation_key_conflict"])
+        self.assertEqual(clusters[0]["pinned_citation_keys"], ["smith2020a", "smith2020b"])
+
+    def test_keep_suggestion_prefers_pinned_key_then_pdf(self):
+        clusters = self.dup.cluster_records([
+            self._rec("A", title="Shared long title here"),
+            self._rec("B", title="Shared long title here", citationKey="k", citationKeyPinned=True),
+        ])
+        self.assertEqual(clusters[0]["keep_suggestion"], "B")
+
+    # ── failure semantics: never an empty success ──
+    class _Bridge:
+        def __init__(self, response):
+            self.response = response
+
+        def execute_js(self, code, **kwargs):
+            if isinstance(self.response, Exception):
+                raise self.response
+            return self.response
+
+    def test_bridge_transport_failure_is_not_ok(self):
+        payload = self.dup.find_duplicates(self._Bridge({"ok": False, "error": "plugin down"}))
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "BRIDGE_ERROR")
+
+    def test_bridge_exception_is_not_ok(self):
+        payload = self.dup.find_duplicates(self._Bridge(RuntimeError("boom")))
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "BRIDGE_ERROR")
+
+    def test_malformed_payload_is_not_ok(self):
+        payload = self.dup.find_duplicates(self._Bridge({"ok": True, "data": {"count": 0, "items": []}}))
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "BRIDGE_BAD_PAYLOAD")
+
+    def test_zero_scan_of_nonempty_library_is_not_ok(self):
+        """The exact silent false negative the private API produced."""
+        payload = self.dup.find_duplicates(
+            self._Bridge({
+                "ok": True,
+                "data": {"ok": True, "scanned": 0, "libraryTopLevel": 2415,
+                         "libraryAllItems": 4843, "bbt": True, "items": []},
+            })
+        )
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "EMPTY_SCAN")
+
+    def test_genuinely_clean_library_is_a_distinguishable_success(self):
+        payload = self.dup.find_duplicates(
+            self._Bridge({
+                "ok": True,
+                "data": {"ok": True, "scanned": 2, "libraryTopLevel": 2,
+                         "libraryAllItems": 5, "bbt": False,
+                         "items": [self._rec("A", title="One title here"),
+                                   self._rec("B", title="Another title there", creators=("Jones",))]},
+            })
+        )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["group_count"], 0)
+        self.assertEqual(payload["scanned"], 2)
+
+    def test_fetch_js_uses_no_private_api(self):
+        js = self.dup.fetch_items_js(1)
+        self.assertNotIn("_findDuplicates", js)
+        self.assertNotIn("Zotero.Duplicates", js)
+        self.assertIn("Zotero.Items.getAll", js)
+
+    def test_legacy_output_fields_are_preserved(self):
+        payload = self.dup.find_duplicates(
+            self._Bridge({
+                "ok": True,
+                "data": {"ok": True, "scanned": 2, "libraryTopLevel": 2,
+                         "libraryAllItems": 2, "bbt": True,
+                         "items": [self._rec("A", title="Shared long title here"),
+                                   self._rec("B", title="Shared long title here")]},
+            })
+        )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(len(payload["items"]), 2)
+        for entry in payload["items"]:
+            for legacy_field in ("key", "title", "date", "setID"):
+                self.assertIn(legacy_field, entry)

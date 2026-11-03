@@ -1,7 +1,7 @@
 # Roadmap — cli-anything-zotero
 
 Last updated: 2026-07-22  
-Current release: **v1.2.1** (CLI Bridge plugin **1.2.1**)
+Current release: **v1.3.0** (CLI Bridge plugin **1.3.0**)
 
 ## Positioning
 

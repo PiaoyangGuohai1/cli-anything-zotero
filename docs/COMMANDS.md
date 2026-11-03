@@ -36,7 +36,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `item file <ref>` | Get attachment file path | SQLite |
 | `item fetch-pdf <key> [--sources ...] [--force]` | Zotero find-pdf + OA cascade, then attach | JS Bridge + HTTP |
 | `item find-pdf <key>` | Zotero built-in Find Available PDF only | JS Bridge |
-| `item duplicates [--by doi|title|zotero]` | Find duplicate groups | SQLite / JS Bridge |
+| `item duplicates [--by zotero|doi|title] [--year-tolerance N]` | Find duplicate clusters (default `zotero`: DOI + title/creator/year, with citation keys) | JS Bridge / SQLite |
 | `item merge KEEP OTHER... [--dry-run/--confirm]` | Merge items into keep key | JS Bridge |
 
 | `item attach <key> <pdf>` | Attach local PDF | JS Bridge |
@@ -50,7 +50,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `item metrics <ref> [--pmid]` | NIH iCite citation metrics | iCite API |
 | `item update <key> --field k=v` | Update metadata fields | JS Bridge |
 | `item tag <key> --add/--remove` | Add or remove tags | JS Bridge |
-| `item delete <key> --confirm` | Delete item permanently | JS Bridge |
+| `item delete <key> [--confirm]` | Move item to the trash (reversible) | JS Bridge |
+| `item delete <key> --permanent --yes-erase` | Erase item outright, bypassing the trash (irreversible) | JS Bridge |
+| `item restore <key>` | Restore a trashed item | JS Bridge |
 | `item add-to-collection <ref> <col>` | Add item to collection | SQLite (experimental) |
 | `item move-to-collection <ref> <col>` | Move item between collections | SQLite (experimental) |
 
@@ -78,7 +80,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `collection fetch-pdfs <key> [--sources ...] [--limit N] [--jsonl-progress] [--resume]` | Zotero + OA cascade; optional resume state | JS Bridge + HTTP |
 | `collection remove-item <col_key> <item_key>` | Remove item from collection (keeps item) | JS Bridge |
 | `collection rename <key> --name/--parent` | Rename or move collection | JS Bridge |
-| `collection delete <key> --confirm` | Delete collection | JS Bridge |
+| `collection delete <key> [--confirm] [--delete-items]` | Move collection to the trash (reversible) | JS Bridge |
+| `collection delete <key> --permanent --yes-erase` | Erase collection outright (irreversible) | JS Bridge |
+| `collection restore <key>` | Restore a trashed collection | JS Bridge |
 | `collection use-selected` | Use currently selected collection in Zotero GUI | Connector |
 
 ## add -- Unified Ingest (preferred for agents)

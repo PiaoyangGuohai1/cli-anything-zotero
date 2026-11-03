@@ -349,6 +349,70 @@ def emit_js(ctx: click.Context | None, result: dict, *, require_data: bool = Fal
     return 0
 
 
+def _stdin_is_interactive() -> bool:
+    try:
+        return bool(click.get_text_stream("stdin").isatty())
+    except Exception:
+        return False
+
+
+def gate_destructive(
+    *,
+    noun: str,
+    target: str,
+    permanent: bool,
+    confirm: bool,
+    yes_erase: bool,
+) -> None:
+    """Gate a delete verb, or raise ``click.ClickException`` to abort.
+
+    Two tiers, because they carry different risk:
+
+    * Default (trash) is reversible -- the item keeps its key and can be
+      restored. ``--confirm`` suppresses the prompt.
+    * ``--permanent`` bypasses the trash and cannot be undone. ``--confirm``
+      does NOT authorize it and does NOT suppress its prompt; only the explicit
+      ``--yes-erase`` does. That asymmetry is deliberate: ``--confirm`` is the
+      flag people paste into scripts out of habit, so it must never be the flag
+      that erases something.
+    """
+    if not permanent:
+        if confirm:
+            return
+        if not _stdin_is_interactive():
+            raise click.ClickException(
+                f"Moving {noun} '{target}' to the trash needs confirmation. "
+                "Pass --confirm (reversible: restore with the matching `restore` command)."
+            )
+        if not click.confirm(
+            f"Move {noun} '{target}' to the Zotero trash? "
+            "(reversible -- it can be restored until you empty the trash)",
+            default=False,
+        ):
+            raise click.ClickException("Aborted.")
+        return
+
+    if yes_erase:
+        return
+
+    detail = (
+        f"PERMANENT ERASE of {noun} '{target}'.\n"
+        "  This bypasses the trash entirely. It is IRREVERSIBLE: the item is\n"
+        "  removed from the database, not recoverable from the trash, and any\n"
+        "  citation key pinned to it is orphaned in every document citing it.\n"
+    )
+    if confirm:
+        detail += "  --confirm does not authorize a permanent erase.\n"
+    if not _stdin_is_interactive():
+        raise click.ClickException(
+            detail + "  Non-interactive: pass --permanent --yes-erase to proceed, "
+            "or drop --permanent to move it to the trash instead."
+        )
+    click.echo(detail, err=True)
+    if not click.confirm("Erase permanently?", default=False):
+        raise click.ClickException("Aborted.")
+
+
 def _print_collection_tree(nodes: list[dict[str, Any]], level: int = 0) -> None:
     prefix = "  " * level
     for node in nodes:
@@ -934,12 +998,61 @@ def collection_remove_item_command(ctx: click.Context, collection_key: str, item
 
 @collection.command("delete")
 @click.argument("collection_key")
-@click.option("--delete-items", is_flag=True, help="Also delete all items in the collection.")
-@click.option("--confirm", is_flag=True, required=True, help="Required to confirm deletion.")
+@click.option("--delete-items", is_flag=True, help="Also send the collection's items to the trash.")
+@click.option(
+    "--confirm",
+    is_flag=True,
+    help="Skip the trash confirmation prompt. Does NOT authorize --permanent.",
+)
+@click.option(
+    "--permanent",
+    is_flag=True,
+    help="Erase outright instead of trashing. Bypasses the trash; IRREVERSIBLE.",
+)
+@click.option(
+    "--yes-erase",
+    is_flag=True,
+    help="Second acknowledgment required by --permanent. The only way to erase unprompted.",
+)
 @click.pass_context
-def collection_delete_command(ctx: click.Context, collection_key: str, delete_items: bool, confirm: bool) -> int:
-    """Delete a collection (via JS bridge). Requires --confirm."""
-    result = current_bridge(ctx).delete_collection(collection_key, delete_items=delete_items)
+def collection_delete_command(
+    ctx: click.Context,
+    collection_key: str,
+    delete_items: bool,
+    confirm: bool,
+    permanent: bool,
+    yes_erase: bool,
+) -> int:
+    """Move a collection to the trash (via JS bridge).
+
+    Default behaviour matches the Zotero UI: the collection goes to the trash
+    and can be brought back with `zotero-cli collection restore KEY`. Items stay
+    in the library unless --delete-items is given, which trashes them too.
+
+    Add --permanent to erase outright. That bypasses the trash and cannot be
+    undone, so it needs --yes-erase and prompts even when --confirm is given.
+    """
+    if yes_erase and not permanent:
+        raise click.ClickException("--yes-erase only applies together with --permanent.")
+    gate_destructive(
+        noun="collection",
+        target=collection_key,
+        permanent=permanent,
+        confirm=confirm,
+        yes_erase=yes_erase,
+    )
+    result = current_bridge(ctx).delete_collection(
+        collection_key, delete_items=delete_items, permanent=permanent
+    )
+    return emit_js(ctx, result)
+
+
+@collection.command("restore")
+@click.argument("collection_key")
+@click.pass_context
+def collection_restore_command(ctx: click.Context, collection_key: str) -> int:
+    """Restore a trashed collection (via JS bridge)."""
+    result = current_bridge(ctx).restore_collection(collection_key)
     return emit_js(ctx, result)
 
 
@@ -1442,16 +1555,54 @@ def item_metrics_command(ctx: click.Context, ref: str, is_pmid: bool) -> int:
 
 @item.command("delete")
 @click.argument("item_key")
-@click.option("--confirm", is_flag=True, help="Confirm deletion. Required to prevent accidental deletions.")
+@click.option(
+    "--confirm",
+    is_flag=True,
+    help="Skip the trash confirmation prompt. Does NOT authorize --permanent.",
+)
+@click.option(
+    "--permanent",
+    is_flag=True,
+    help="Erase outright instead of trashing. Bypasses the trash; IRREVERSIBLE.",
+)
+@click.option(
+    "--yes-erase",
+    is_flag=True,
+    help="Second acknowledgment required by --permanent. The only way to erase unprompted.",
+)
 @click.pass_context
-def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int:
-    """Delete a Zotero item permanently (via JS bridge)."""
-    if not confirm:
-        raise click.ClickException(
-            f"Deleting item '{item_key}' is irreversible. "
-            "Pass --confirm to proceed."
-        )
-    result = current_bridge(ctx).delete_item(item_key)
+def item_delete_command(
+    ctx: click.Context, item_key: str, confirm: bool, permanent: bool, yes_erase: bool
+) -> int:
+    """Move a Zotero item to the trash (via JS bridge).
+
+    Default behaviour matches the Zotero UI: the item goes to the trash, keeps
+    its key, and can be brought back with `zotero-cli item restore KEY` until
+    you empty the trash. Nothing is destroyed.
+
+    Add --permanent to erase the item outright instead. That bypasses the trash
+    and cannot be undone, so it needs its own acknowledgment (--yes-erase) and
+    prompts even when --confirm is given.
+    """
+    if yes_erase and not permanent:
+        raise click.ClickException("--yes-erase only applies together with --permanent.")
+    gate_destructive(
+        noun="item",
+        target=item_key,
+        permanent=permanent,
+        confirm=confirm,
+        yes_erase=yes_erase,
+    )
+    result = current_bridge(ctx).delete_item(item_key, permanent=permanent)
+    return emit_js(ctx, result)
+
+
+@item.command("restore")
+@click.argument("item_key")
+@click.pass_context
+def item_restore_command(ctx: click.Context, item_key: str) -> int:
+    """Restore a trashed item back into the library (via JS bridge)."""
+    result = current_bridge(ctx).restore_item(item_key)
     return emit_js(ctx, result)
 
 
@@ -1460,38 +1611,57 @@ def item_delete_command(ctx: click.Context, item_key: str, confirm: bool) -> int
     "--by",
     "by",
     type=click.Choice(["doi", "title", "zotero"]),
-    default="doi",
+    default="zotero",
     show_default=True,
-    help="Duplicate matching strategy.",
+    help=(
+        "Matching strategy. 'zotero' reads the live library over the JS bridge and "
+        "clusters on DOI plus title confirmed by creator and year; 'doi'/'title' "
+        "are single-rule scans of the local SQLite database."
+    ),
 )
 @click.option("--limit", default=50, show_default=True, type=int, help="Maximum number of duplicate groups/items.")
+@click.option(
+    "--year-tolerance",
+    default=1,
+    show_default=True,
+    type=int,
+    help=(
+        "Years may differ by at most this much for a title match to count "
+        "(--by zotero). 1 catches preprint/published pairs; 0 requires exact agreement."
+    ),
+)
 @click.pass_context
-def item_duplicates_command(ctx: click.Context, by: str, limit: int) -> int:
-    """Find duplicate items (DOI/title via SQLite, or Zotero native detector)."""
+def item_duplicates_command(ctx: click.Context, by: str, limit: int, year_tolerance: int) -> int:
+    """Find duplicate items.
+
+    --by zotero (default) reads every top-level item from the running Zotero over
+    the JS bridge and clusters copies that share a DOI, or that share a
+    normalized title confirmed by a common creator surname and an agreeing year.
+    Each reported copy carries its attachment counts and its Better BibTeX
+    citation key, and clusters holding more than one PINNED citation key are
+    flagged -- merging those orphans a key a manuscript may already cite.
+
+    A bridge failure, or a scan that examines zero items in a library that
+    demonstrably holds items, exits nonzero rather than reporting a clean library.
+    """
     from cli_anything.zotero.core import hygiene
     from cli_anything.zotero.core.results import exit_code_for
 
+    library_id = session_mod.session_library_id(current_session())
+
     if by == "zotero":
-        result = current_bridge(ctx).find_duplicates(limit=limit)
-        data = result.get("data") if result.get("ok") else None
-        if isinstance(data, dict) and "error" in data and data.get("count", 0) == 0:
-            payload = {
-                "action": "item_duplicates",
-                "ok": False,
-                "status": "error",
-                "code": "ZOTERO_DUP_FAILED",
-                "by": "zotero",
-                "error": data.get("error"),
-            }
-            emit(ctx, payload)
-            return 1
-        emit(ctx, data if data is not None else result)
-        return 0 if result.get("ok") else 1
+        payload = current_bridge(ctx).find_duplicates(
+            limit=limit,
+            library_id=library_id,
+            year_tolerance=year_tolerance,
+        )
+        emit(ctx, payload)
+        return exit_code_for(payload)
 
     payload = hygiene.find_duplicates(
         current_runtime(ctx),
         by=by,
-        library_id=session_mod.session_library_id(current_session()),
+        library_id=library_id,
         limit=limit,
     )
     emit(ctx, payload)

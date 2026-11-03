@@ -54,8 +54,12 @@ zotero-cli item similar ITEM_KEY --top-k 5
 # Search annotations/highlights by keyword or color
 zotero-cli item search-annotations "keyword" --color "#ff6666" --limit 10
 
-# Find duplicates
-zotero-cli --json item duplicates --by doi --limit 20
+# Find duplicates. Default --by zotero clusters on DOI and on normalized title
+# confirmed by creator surname + year, and reports each copy's attachment counts
+# and Better BibTeX citation key. Clusters holding more than one PINNED key are
+# flagged: merging those orphans a key a manuscript may already cite.
+zotero-cli --json item duplicates --limit 20
+zotero-cli --json item duplicates --year-tolerance 0   # require exact year agreement
 zotero-cli --json item merge KEEP OTHER1 OTHER2   # dry-run default; --confirm to apply
 ```
 
@@ -189,8 +193,15 @@ zotero-cli item update ITEM_KEY --field title="New Title" --field DOI="10.1234/x
 # Add/remove tags
 zotero-cli item tag ITEM_KEY --add "important" --remove "unread"
 
-# Delete item (requires --confirm)
+# Move item to the trash -- reversible, same as pressing Delete in the Zotero UI
 zotero-cli item delete ITEM_KEY --confirm
+
+# Bring it back
+zotero-cli item restore ITEM_KEY
+
+# Erase outright, bypassing the trash. IRREVERSIBLE, and orphans any pinned
+# citation key. --confirm does NOT authorize this; --yes-erase is required.
+zotero-cli item delete ITEM_KEY --permanent --yes-erase
 ```
 
 ### Collection Management
@@ -211,10 +222,12 @@ zotero-cli --json collection items COLLECTION_KEY
 # Collection statistics (total items, PDF coverage, year/journal distribution)
 zotero-cli --json collection stats COLLECTION_KEY
 
-# Create / rename / delete collection
+# Create / rename / trash / restore collection
 zotero-cli collection create "New Collection"
 zotero-cli collection rename COLLECTION_KEY --name "New Name"
-zotero-cli collection delete COLLECTION_KEY --confirm
+zotero-cli collection delete COLLECTION_KEY --confirm      # to trash (reversible)
+zotero-cli collection restore COLLECTION_KEY
+zotero-cli collection delete COLLECTION_KEY --permanent --yes-erase   # irreversible
 
 # Add/remove items from collection
 zotero-cli item add-to-collection ITEM_KEY COLLECTION_KEY
@@ -282,4 +295,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-1.2.1+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.
+1.3.0+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.

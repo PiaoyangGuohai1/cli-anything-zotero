@@ -392,29 +392,74 @@ class JSBridgeClient:
         )
         return self.execute_js(js, wait_seconds=4)
 
-    def delete_item(self, item_key: str, *, library_id: int = 1) -> dict:
+    def delete_item(self, item_key: str, *, library_id: int = 1, permanent: bool = False) -> dict:
+        """Move an item to the trash, or (``permanent=True``) erase it outright.
+
+        The default is the trash, matching what "delete" does in the Zotero UI:
+        the item keeps its key, stays recoverable via ``restore_item``, and is
+        purged only when the user empties the trash. ``permanent=True`` calls
+        ``eraseTx()``, which bypasses the trash and cannot be undone.
+        """
+        if permanent:
+            js = (
+                f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
+                f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+                f"var title = item.getField('title').substring(0,60); "
+                f"await item.eraseTx(); "
+                f"return 'ERASED: ' + title;"
+            )
+            return self.execute_js(js, wait_seconds=4)
         js = (
             f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
             f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
             f"var title = item.getField('title').substring(0,60); "
-            f"await item.eraseTx(); "
-            f"return 'DELETED: ' + title;"
+            f"if (item.deleted) {{ return 'ALREADY_TRASHED: ' + title; }} "
+            f"item.deleted = true; "
+            f"await item.saveTx(); "
+            f"return 'TRASHED: ' + title;"
         )
         return self.execute_js(js, wait_seconds=4)
 
-    def find_duplicates(self, *, limit: int = 50, library_id: int = 1) -> dict:
+    def restore_item(self, item_key: str, *, library_id: int = 1) -> dict:
+        """Restore a trashed item (the counterpart to a default ``delete``)."""
         js = (
-            f"try {{ var dup = new Zotero.Duplicates({library_id}); "
-            f"await dup._findDuplicates(); "
-            f"var map = dup.getSetItemsByItemID(); "
-            f"var itemIDs = Object.keys(map).map(Number).filter(Boolean); "
-            f"var items = itemIDs.map(id => Zotero.Items.get(id)).filter(i => i && !i.isAttachment() && !i.isNote()); "
-            f"return {{count: items.length, items: items.slice(0, {limit}).map(i => ({{key: i.key, "
-            f"title: i.getField('title').substring(0,80), date: i.getField('date'), "
-            f"setID: map[i.id]}}))}}; "
-            f"}} catch(e) {{ return {{error: e.message, count: 0, items: []}}; }}"
+            f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
+            f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+            f"var title = item.getField('title').substring(0,60); "
+            f"if (!item.deleted) {{ return 'NOT_TRASHED: ' + title; }} "
+            f"item.deleted = false; "
+            f"await item.saveTx(); "
+            f"return 'RESTORED: ' + title;"
         )
-        return self.execute_js(js, wait_seconds=10)
+        return self.execute_js(js, wait_seconds=4)
+
+    def find_duplicates(
+        self,
+        *,
+        limit: int = 50,
+        library_id: int = 1,
+        year_tolerance: int = 1,
+        timeout: int = 60,
+    ) -> dict:
+        """Find duplicate clusters using public Zotero APIs only.
+
+        Replaces a call to the private ``Zotero.Duplicates._findDuplicates()``,
+        which under Zotero 9.0.6 resolves to ``undefined`` without throwing and
+        left the CLI reporting ``count: 0`` at exit 0 on a library that had
+        duplicates. See ``core/duplicates.py`` for the matching rules.
+
+        Returns the ``result_payload`` shape directly (not a transport envelope);
+        callers should use ``results.exit_code_for`` rather than ``emit_js``.
+        """
+        from cli_anything.zotero.core import duplicates as duplicates_mod
+
+        return duplicates_mod.find_duplicates(
+            self,
+            library_id=library_id,
+            limit=limit,
+            year_tolerance=year_tolerance,
+            timeout=timeout,
+        )
 
     def get_annotations(self, item_key: str, *, library_id: int = 1) -> dict:
         js = (
@@ -646,13 +691,61 @@ class JSBridgeClient:
         )
         return self.execute_js(js, wait_seconds=4)
 
-    def delete_collection(self, collection_key: str, *, delete_items: bool = False, library_id: int = 1) -> dict:
+    def delete_collection(
+        self,
+        collection_key: str,
+        *,
+        delete_items: bool = False,
+        library_id: int = 1,
+        permanent: bool = False,
+    ) -> dict:
+        """Move a collection to the trash, or (``permanent=True``) erase it.
+
+        Default is the trash, matching the Zotero UI. ``delete_items`` carries
+        the member items along with the collection rather than leaving them in
+        the library; it is honoured on both paths.
+        """
+        if permanent:
+            erase = (
+                "await col.eraseTx();"
+                if delete_items
+                else "await col.eraseTx({deleteItems: false});"
+            )
+            js = (
+                f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
+                f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
+                f"var name = col.name; "
+                f"{erase} "
+                f"return 'ERASED: collection ' + name;"
+            )
+            return self.execute_js(js, wait_seconds=4)
+        trash_items_js = (
+            "var childIDs = col.getChildItems(true) || []; "
+            "for (var cid of childIDs) { var ci = Zotero.Items.get(cid); "
+            "  if (ci && !ci.deleted) { ci.deleted = true; await ci.saveTx(); trashed++; } } "
+        ) if delete_items else ""
+        js = (
+            f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
+            f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
+            f"var name = col.name; var trashed = 0; "
+            f"{trash_items_js}"
+            f"if (col.deleted) {{ return 'ALREADY_TRASHED: collection ' + name; }} "
+            f"col.deleted = true; "
+            f"await col.saveTx(); "
+            f"return 'TRASHED: collection ' + name + (trashed ? ' (+' + trashed + ' items)' : '');"
+        )
+        return self.execute_js(js, wait_seconds=8)
+
+    def restore_collection(self, collection_key: str, *, library_id: int = 1) -> dict:
+        """Restore a trashed collection."""
         js = (
             f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
             f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
             f"var name = col.name; "
-            f"{'await col.eraseTx();' if delete_items else 'await col.eraseTx({deleteItems: false});'} "
-            f"return 'DELETED: collection ' + name;"
+            f"if (!col.deleted) {{ return 'NOT_TRASHED: collection ' + name; }} "
+            f"col.deleted = false; "
+            f"await col.saveTx(); "
+            f"return 'RESTORED: collection ' + name;"
         )
         return self.execute_js(js, wait_seconds=4)
 

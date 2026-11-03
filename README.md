@@ -193,6 +193,43 @@ zotero-cli --json docx cite draft.docx --output draft-cited.docx --mode auto --f
 zotero-cli --json audit tail --limit 20
 ```
 
+**Library hygiene**
+```bash
+# Find duplicate clusters. Matches on DOI, and on normalized title confirmed by
+# a shared creator surname and an agreeing year. Each copy reports its
+# attachment counts and its Better BibTeX citation key.
+zotero-cli --json item duplicates --limit 20
+zotero-cli --json item duplicates --year-tolerance 0   # exact year agreement only
+zotero-cli --json item merge KEEP OTHER1               # dry-run; --confirm applies
+```
+
+Clusters whose copies carry more than one *pinned* citation key are flagged with
+`citation_key_conflict: true`. Merging those silently orphans whichever key your
+manuscript already cites, so resolve the key before merging.
+
+**Deleting things**
+```bash
+zotero-cli item delete ITEM_KEY --confirm     # -> trash. Reversible.
+zotero-cli item restore ITEM_KEY              # <- back out of the trash
+zotero-cli collection delete COLLECTION_KEY --confirm
+zotero-cli collection restore COLLECTION_KEY
+```
+
+`delete` moves things to the Zotero trash, exactly as the Delete key does in the
+Zotero UI. Trashed items keep their keys and stay recoverable until you empty the
+trash, which the CLI never does for you.
+
+Permanent erasure is a separate path and bypasses the trash entirely:
+
+```bash
+zotero-cli item delete ITEM_KEY --permanent --yes-erase
+```
+
+`--permanent` prompts before erasing **even when `--confirm` is given**; only the
+explicit `--yes-erase` suppresses that prompt. `--confirm` is the flag people
+paste into scripts out of habit, so it is deliberately not the flag that can
+destroy anything.
+
 **Read & Export**
 ```bash
 zotero-cli item get ITEM_KEY
