@@ -128,6 +128,8 @@ First install requires manual steps in Zotero:
 
 > After the first install, future upgrades via `app install-plugin` are automatic.
 
+> **Upgrading to Zotero 10:** bridge versions up to 1.2.1 only declare support for Zotero 7–9, so Zotero 10 disables them. Upgrade to 1.2.2 or later and repeat the manual install above once; automatic upgrades work again afterwards.
+
 For existing users upgrading to the dynamic DOCX citation workflow, update both
 the Python package and the Zotero bridge plugin:
 
@@ -157,7 +159,7 @@ zotero-cli js "return Zotero.version"
 | `Cannot resolve Zotero profile directory` | Launch Zotero at least once first |
 | Plugin not appearing | Restart Zotero after installing the `.xpi` |
 | `endpoint_active: false` | Plugin failed to load — reinstall via Zotero UI |
-| `No endpoint found` after a Zotero major upgrade | Zotero disabled the bridge as incompatible; run `zotero-cli app doctor` (reports `app_disabled`), upgrade cli-anything-zotero, then `zotero-cli app install-plugin` and restart Zotero |
+| `No endpoint found` after a Zotero major upgrade | Zotero disabled the bridge as incompatible; `zotero-cli app doctor` reports `app_disabled`. Upgrade cli-anything-zotero, run `zotero-cli app install-plugin`, then install the printed `.xpi` once by hand (**Tools → Plugins → gear → Install Plugin From File...**) and restart Zotero. Automatic upgrade cannot work here because it needs the live bridge |
 | Windows: `pip` not recognized | Close and reopen PowerShell after installing Python |
 
 ---
