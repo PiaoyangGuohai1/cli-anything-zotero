@@ -109,6 +109,8 @@ zotero-cli app install-plugin
 
 > 装好后以后升级都是自动的。
 
+> **升级到 Zotero 10：** 1.2.1 及以前的插件只声明支持 Zotero 7–9，Zotero 10 会把它禁用。升级到 1.2.2 或更新版本后，照上面的步骤手动安装一次，之后自动升级就恢复了。
+
 已有旧版本的用户，如果要使用“占位符 -> 动态 DOCX 引用”能力，需要同时更新
 Python 包和 Zotero Bridge 插件：
 
@@ -138,7 +140,7 @@ zotero-cli js "return Zotero.version"
 | `Cannot resolve Zotero profile directory` | 先启动一次 Zotero |
 | 插件没显示 | 安装 `.xpi` 后重启 Zotero |
 | `endpoint_active: false` | 插件加载失败 — 通过 Zotero UI 重新安装 |
-| Zotero 大版本升级后出现 `No endpoint found` | Zotero 判定插件不兼容并禁用了它；跑 `zotero-cli app doctor`（会报 `app_disabled`），升级 cli-anything-zotero，再执行 `zotero-cli app install-plugin` 并重启 Zotero |
+| Zotero 大版本升级后出现 `No endpoint found` | Zotero 判定插件不兼容并禁用了它，`zotero-cli app doctor` 会报 `app_disabled`。升级 cli-anything-zotero，执行 `zotero-cli app install-plugin`，再手动安装一次它打印的 `.xpi`（**工具 → 插件 → 齿轮 → 从文件安装插件...**）并重启 Zotero。这种情况下自动升级用不了，因为它要靠正在运行的插件 |
 | Windows: `pip` 不识别 | 安装 Python 后关闭并重新打开 PowerShell |
 
 ---
