@@ -236,6 +236,19 @@ def item_has_pdf(runtime: Any, item_key: str, *, library_id: int = 1) -> bool:
     return bool(item.get("hasPdf"))
 
 
+def _bridge_item_summary(bridge: Any, item_key: str, *, library_id: int) -> dict[str, Any] | None:
+    """Title/DOI/hasPdf for an item, read from the running Zotero (or None)."""
+    summarize = getattr(bridge, "item_pdf_summary", None)
+    if summarize is None:
+        return None
+    try:
+        transport = summarize(item_key, library_id=library_id)
+    except Exception:
+        return None
+    data = transport.get("data") if isinstance(transport, dict) and transport.get("ok") else None
+    return data if isinstance(data, dict) and data.get("key") else None
+
+
 def fetch_pdf_for_item(
     runtime: Any,
     bridge: Any,
@@ -251,6 +264,13 @@ def fetch_pdf_for_item(
     sources = sources or list(_DEFAULT_SOURCES)
     sqlite_path = runtime.environment.sqlite_path
     item = zotero_sqlite.resolve_item(sqlite_path, item_key, library_id=library_id)
+    from_bridge = False
+    if not item:
+        # The SQLite snapshot cannot see writes still in Zotero's WAL, which is
+        # exactly where an item imported a moment ago (add doi --fetch-pdf,
+        # batch add-doi) lives. Ask Zotero itself before giving up.
+        item = _bridge_item_summary(bridge, item_key, library_id=library_id)
+        from_bridge = item is not None
     if not item:
         return result_payload(
             action="item_fetch_pdf",
@@ -266,7 +286,7 @@ def fetch_pdf_for_item(
     doi = (item.get("DOI") or (item.get("fields") or {}).get("DOI") or "").strip()
     if not doi and item.get("fields"):
         doi = (item["fields"].get("DOI") or "").strip()
-    if not doi:
+    if not doi and not from_bridge:
         # cheap field fetch
         full = zotero_sqlite.resolve_item(sqlite_path, item_key, library_id=library_id)
         # resolve without include_related still has DOI from base select after our 1.2 change

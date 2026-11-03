@@ -49,7 +49,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `item annotations <key>` | View annotations for an item | JS Bridge |
 | `item metrics <ref> [--pmid]` | NIH iCite citation metrics | iCite API |
 | `item update <key> --field k=v` | Update metadata fields | JS Bridge |
-| `item tag <key> --add/--remove` | Add or remove tags | JS Bridge |
+| `item tag <key>... [--keys-from FILE\|-] --add/--remove` | Add or remove tags on one or many items (one bridge call) | JS Bridge |
 | `item delete <key> [--confirm]` | Move item to the trash (reversible) | JS Bridge |
 | `item delete <key> --permanent --yes-erase` | Erase item outright, bypassing the trash (irreversible) | JS Bridge |
 | `item restore <key>` | Restore a trashed item | JS Bridge |
@@ -121,6 +121,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `docx prepare-zotero-import <file.docx> --experimental --output transfer.docx` | Experimental only: create a Zotero transfer DOCX for debugging import behavior |
 | `export bib --items KEY1,KEY2 --output refs.bib` | Export selected Zotero items to a standalone BibTeX/BibLaTeX file |
 | `export bib --collection COLLKEY --output refs.bib` | Export top-level items in a collection to a standalone BibTeX/BibLaTeX file |
+| `batch <ops.jsonl\|-> [--op OP] [--dry-run] [--stop-on-error] [--jsonl-progress]` | Run many `tag` / `update` / `note` / `add-doi` / `add-pmid` operations from JSONL in one process; validates every line first |
 | `sync` | Trigger Zotero sync |
 | `js <code> [--wait N]` | Execute arbitrary Zotero JavaScript |
 | `tag list` | List all tags |

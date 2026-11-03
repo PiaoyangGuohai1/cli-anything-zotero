@@ -190,8 +190,17 @@ zotero-cli --json collection fetch-pdfs COLLECTION_KEY --limit 20 --jsonl-progre
 # Update metadata fields
 zotero-cli item update ITEM_KEY --field title="New Title" --field DOI="10.1234/xxx"
 
-# Add/remove tags
+# Add/remove tags (several keys = one bridge call; --keys-from - reads keys from stdin)
 zotero-cli item tag ITEM_KEY --add "important" --remove "unread"
+zotero-cli item tag KEY1 KEY2 KEY3 --add "reviewed"
+
+# Many writes at once: one JSON operation per line (tag | update | note | add-doi | add-pmid).
+# Every line is validated before anything runs. Prefer this over a loop of single calls.
+zotero-cli --json batch ops.jsonl --dry-run
+zotero-cli --json batch ops.jsonl
+#   {"op": "tag", "key": "ABCD1234", "add": ["reviewed"]}
+#   {"op": "note", "key": "ABCD1234", "file": "notes/ABCD1234.md"}
+#   {"op": "add-doi", "doi": "10.1000/xyz", "tags": ["to-read"], "fetch_pdf": true}
 
 # Move item to the trash -- reversible, same as pressing Delete in the Zotero UI
 zotero-cli item delete ITEM_KEY --confirm
@@ -295,4 +304,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-1.3.0+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.
+1.4.0+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.

@@ -1092,6 +1092,81 @@ def sync_command(ctx: click.Context) -> int:
     return emit_js(ctx, result)
 
 
+@cli.command("batch")
+@click.argument("input_path", type=click.Path(allow_dash=True, dir_okay=False))
+@click.option(
+    "--op",
+    "default_op",
+    type=click.Choice(["tag", "update", "note", "add-doi", "add-pmid"]),
+    default=None,
+    help="Operation for lines that do not name one with \"op\".",
+)
+@click.option("--dry-run", is_flag=True, help="Validate every line and print the parsed operations; change nothing.")
+@click.option("--stop-on-error", is_flag=True, help="Stop at the first failed operation (default: run the rest).")
+@click.option(
+    "--pdf-sources",
+    default="zotero,unpaywall,epmc,biorxiv,arxiv",
+    show_default=True,
+    help="PDF cascade for add-doi/add-pmid lines with \"fetch_pdf\": true.",
+)
+@click.option("--jsonl-progress", is_flag=True, help="Print one JSON result per operation as it finishes.")
+@click.pass_context
+def batch_command(
+    ctx: click.Context,
+    input_path: str,
+    default_op: str | None,
+    dry_run: bool,
+    stop_on_error: bool,
+    pdf_sources: str,
+    jsonl_progress: bool,
+) -> int:
+    """Run many write operations from a JSONL file in one process.
+
+    One JSON object per line ('-' reads stdin). Every line is validated before
+    anything runs; if any line is invalid, nothing is changed. Operations then
+    run in order, and consecutive tag lines go to Zotero in one bridge call.
+
+    \b
+      {"op": "tag", "key": "ABCD1234", "add": ["reviewed"], "remove": ["unread"]}
+      {"op": "update", "key": "ABCD1234", "fields": {"title": "New title"}}
+      {"op": "note", "key": "ABCD1234", "file": "notes/abcd.md"}
+      {"op": "add-doi", "doi": "10.1000/xyz", "collection": "COLLKEY1", "tags": ["t"], "fetch_pdf": true}
+      {"op": "add-pmid", "pmid": "12345678", "tags": ["t"]}
+
+    Relative note files resolve against the JSONL file's directory. Exit code is
+    1 when any operation failed; a DOI imported without an open-access PDF
+    counts as done (reported under "partial").
+    """
+    from cli_anything.zotero.core import batch as batch_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
+    with click.open_file(input_path, "r", encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
+    base_dir = Path.cwd() if input_path == "-" else Path(input_path).expanduser().resolve().parent
+    ops, parse_errors = batch_mod.parse_lines(lines, default_op=default_op, base_dir=base_dir)
+    if parse_errors or dry_run:
+        payload = batch_mod.summarize([], parse_errors=parse_errors, dry_run=dry_run, ops=ops)
+        emit(ctx, payload)
+        return exit_code_for(payload)
+
+    def _progress(row: dict) -> None:
+        click.echo(json.dumps(row, ensure_ascii=False))
+
+    rows = batch_mod.run_batch(
+        ops,
+        runtime=current_runtime(ctx),
+        bridge=current_bridge(ctx),
+        session=current_session(),
+        library_id=session_mod.session_library_id(current_session()),
+        stop_on_error=stop_on_error,
+        pdf_sources=pdf_sources,
+        progress=_progress if jsonl_progress else None,
+    )
+    payload = batch_mod.summarize(rows)
+    emit(ctx, payload)
+    return exit_code_for(payload)
+
+
 @cli.group()
 def item() -> None:
     """Item inspection and rendering commands."""
@@ -1354,16 +1429,62 @@ def item_update_command(ctx: click.Context, item_key: str, fields: tuple[str, ..
 
 
 @item.command("tag")
-@click.argument("item_key")
+@click.argument("item_keys", nargs=-1)
+@click.option(
+    "--keys-from",
+    "keys_from",
+    type=click.Path(allow_dash=True, dir_okay=False),
+    default=None,
+    help="Also read item keys from this file, one per line ('-' for stdin).",
+)
 @click.option("--add", "add_tags", multiple=True, help="Tag to add. Repeatable.")
 @click.option("--remove", "remove_tags", multiple=True, help="Tag to remove. Repeatable.")
 @click.pass_context
-def item_tag_command(ctx: click.Context, item_key: str, add_tags: tuple[str, ...], remove_tags: tuple[str, ...]) -> int:
-    """Add or remove tags on an existing Zotero item (via JS bridge)."""
+def item_tag_command(
+    ctx: click.Context,
+    item_keys: tuple[str, ...],
+    keys_from: str | None,
+    add_tags: tuple[str, ...],
+    remove_tags: tuple[str, ...],
+) -> int:
+    """Add or remove tags on one or more Zotero items (via JS bridge).
+
+    Several keys are updated in a single bridge call:
+
+      zotero-cli item tag KEY1 KEY2 KEY3 --add reviewed
+
+      zotero-cli --json item find "graph" | jq -r '.[].key' | zotero-cli item tag --keys-from - --add reviewed
+
+    With one key the output is unchanged from earlier versions; with several
+    it is a summary with one result per key, and the exit code is 1 when any
+    key failed.
+    """
+    from cli_anything.zotero.core import batch as batch_mod
+    from cli_anything.zotero.core.results import exit_code_for
+
     if not add_tags and not remove_tags:
         raise click.ClickException("At least one --add or --remove tag is required.")
-    result = current_bridge(ctx).manage_tags(item_key, list(add_tags), list(remove_tags))
-    return emit_js(ctx, result)
+    raw_keys = list(item_keys)
+    if keys_from:
+        with click.open_file(keys_from, "r", encoding="utf-8") as handle:
+            raw_keys.extend(handle.read().splitlines())
+    library_id = session_mod.session_library_id(current_session())
+    if len(raw_keys) == 1 and not keys_from:
+        result = current_bridge(ctx).manage_tags(
+            raw_keys[0], list(add_tags), list(remove_tags), library_id=library_id
+        )
+        return emit_js(ctx, result)
+    try:
+        keys = batch_mod.parse_keys(raw_keys)
+    except batch_mod.BatchLineError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if not keys:
+        raise click.ClickException("Give at least one item key (as arguments or via --keys-from).")
+    payload = batch_mod.tag_items(
+        current_bridge(ctx), keys, list(add_tags), list(remove_tags), library_id=library_id
+    )
+    emit(ctx, payload)
+    return exit_code_for(payload)
 
 
 @item.command("export")

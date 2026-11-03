@@ -40,6 +40,20 @@ _RESULT_FILE = os.path.join(tempfile.gettempdir(), "zotero-cli-result.json")
 
 _LOCALE = os.environ.get("ZOTERO_LOCALE", "en")
 
+
+def _js(value: Any) -> str:
+    """Render a Python value as a JavaScript literal (via JSON).
+
+    Safer than hand-escaping quotes: backslashes, newlines and quotes in
+    tags, field values or note HTML cannot break out of the string. U+2028 and
+    U+2029 are escaped because older JS engines reject them in string literals.
+    """
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
+
 _MENU_PATHS = {
     "en": 'click menu item "Run JavaScript" of menu "Developer" of menu item "Developer" of menu "Tools" of menu bar 1',
     "zh": 'click menu item "Run JavaScript" of menu "开发者" of menu item "开发者" of menu "工具" of menu bar 1',
@@ -360,13 +374,13 @@ class JSBridgeClient:
     def update_item_fields(self, item_key: str, fields_dict: dict[str, str], *, library_id: int = 1) -> dict:
         if not fields_dict:
             return {"ok": False, "error": "No fields provided"}
+        # Values travel as JSON literals: quotes, backslashes and newlines survive.
         set_lines = " ".join(
-            f"item.setField('{k}', '{v.replace(chr(39), chr(92) + chr(39))}');"
-            for k, v in fields_dict.items()
+            f"item.setField({_js(str(k))}, {_js(str(v))});" for k, v in fields_dict.items()
         )
         js = (
-            f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
-            f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+            f"var item = Zotero.Items.getByLibraryAndKey({int(library_id)}, {_js(item_key)}); "
+            f"if (!item) {{ return 'ERROR: item ' + {_js(item_key)} + ' not found'; }} "
             f"{set_lines} "
             f"await item.saveTx(); "
             f"return 'OK: updated ' + item.getField('title').substring(0,60);"
@@ -376,21 +390,79 @@ class JSBridgeClient:
     def manage_tags(self, item_key: str, add_tags: list[str], remove_tags: list[str], *, library_id: int = 1) -> dict:
         if not add_tags and not remove_tags:
             return {"ok": False, "error": "No tags to add or remove"}
-        tag_lines = ""
-        for t in add_tags:
-            safe = t.replace("'", "\\'")
-            tag_lines += f"item.addTag('{safe}'); "
-        for t in remove_tags:
-            safe = t.replace("'", "\\'")
-            tag_lines += f"item.removeTag('{safe}'); "
+        tag_lines = "".join(f"item.addTag({_js(t)}); " for t in add_tags)
+        tag_lines += "".join(f"item.removeTag({_js(t)}); " for t in remove_tags)
         js = (
-            f"var item = Zotero.Items.getByLibraryAndKey({library_id}, '{item_key}'); "
-            f"if (!item) {{ return 'ERROR: item {item_key} not found'; }} "
+            f"var item = Zotero.Items.getByLibraryAndKey({int(library_id)}, {_js(item_key)}); "
+            f"if (!item) {{ return 'ERROR: item ' + {_js(item_key)} + ' not found'; }} "
             f"{tag_lines}"
             f"await item.saveTx(); "
             f"return 'OK: tags updated for ' + item.getField('title').substring(0,60);"
         )
         return self.execute_js(js, wait_seconds=4)
+
+    def manage_tags_many(self, entries: list[dict], *, library_id: int = 1) -> dict:
+        """Add/remove tags on many items in ONE bridge round-trip.
+
+        ``entries`` is a list of ``{"key": str, "add": [str], "remove": [str]}``.
+        Each item is saved in its own transaction, so one missing or failing
+        item does not roll back the others. ``data`` is a list with one
+        ``{"key", "ok", "changed", "title"|"error"}`` per entry, in order.
+        """
+        payload = [
+            {"key": str(e["key"]), "add": list(e.get("add") or []), "remove": list(e.get("remove") or [])}
+            for e in entries
+        ]
+        js = (
+            f"var LIB = {int(library_id)}; var entries = {_js(payload)}; var out = []; "
+            "for (var e of entries) { try { "
+            "  var item = Zotero.Items.getByLibraryAndKey(LIB, e.key); "
+            "  if (!item) { out.push({key: e.key, ok: false, error: 'item not found'}); continue; } "
+            "  for (var t of e.add) { item.addTag(t); } "
+            "  for (var t of e.remove) { item.removeTag(t); } "
+            "  var changed = item.hasChanged(); "
+            "  if (changed) { await item.saveTx(); } "
+            "  out.push({key: e.key, ok: true, changed: changed, "
+            "    title: (item.getField('title') || '').substring(0, 60)}); "
+            "} catch (err) { out.push({key: e.key, ok: false, error: String((err && err.message) || err)}); } } "
+            "return out;"
+        )
+        # Generous timeout: a few hundred saves can take several seconds.
+        return self.execute_js(js, wait_seconds=max(10, len(payload) // 10))
+
+    def item_pdf_summary(self, item_key: str, *, library_id: int = 1) -> dict:
+        """``{key, title, DOI, hasPdf}`` for one item, read from the live library.
+
+        ``data`` is null when the item does not exist.
+        """
+        js = (
+            f"var item = Zotero.Items.getByLibraryAndKey({int(library_id)}, {_js(item_key)}); "
+            "if (!item || !item.isRegularItem()) { return null; } "
+            "var hasPdf = item.getAttachments().some(function (id) { "
+            "  var a = Zotero.Items.get(id); return a && a.attachmentContentType === 'application/pdf'; }); "
+            "return {key: item.key, title: item.getField('title') || '', "
+            "  DOI: item.getField('DOI') || '', hasPdf: hasPdf};"
+        )
+        return self.execute_js(js, wait_seconds=4)
+
+    def add_child_note(self, parent_key: str, note_html: str, *, library_id: int = 1) -> dict:
+        """Create a child note under ``parent_key`` without a SQLite lookup.
+
+        Resolving the parent in Zotero itself means an item imported moments
+        ago (still only in Zotero's write-ahead log) is found too.
+        """
+        js = (
+            f"var parent = Zotero.Items.getByLibraryAndKey({int(library_id)}, {_js(parent_key)}); "
+            f"if (!parent) {{ return {{ok: false, code: 'NOT_FOUND', error: 'parent item not found'}}; }} "
+            "if (!parent.isRegularItem()) { return {ok: false, code: 'NOT_REGULAR_ITEM', "
+            "  error: 'child notes can only be attached to top-level bibliographic items'}; } "
+            f"var note = new Zotero.Item('note'); note.libraryID = {int(library_id)}; "
+            f"note.parentItemID = parent.id; note.setNote({_js(note_html)}); "
+            "await note.saveTx(); "
+            "return {ok: true, key: note.key, itemID: note.id, "
+            "  parentItemKey: parent.key, title: (parent.getField('title') || '').substring(0, 60)};"
+        )
+        return self.execute_js(js, wait_seconds=5)
 
     def delete_item(self, item_key: str, *, library_id: int = 1, permanent: bool = False) -> dict:
         """Move an item to the trash, or (``permanent=True``) erase it outright.

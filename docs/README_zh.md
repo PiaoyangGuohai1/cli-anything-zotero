@@ -222,11 +222,24 @@ LibreOffice Zotero 插件可刷新的字段。BIB 导出是独立导出功能，
 ```bash
 zotero-cli item update KEY --field title="新标题"
 zotero-cli item tag KEY --add "重要"
+zotero-cli item tag KEY1 KEY2 KEY3 --add "已读"        # 多个条目一次调用
 zotero-cli item attach KEY ./论文.pdf
 zotero-cli item find-pdf KEY
 zotero-cli note add KEY --text "我的笔记"
 zotero-cli sync
 ```
+
+**批量操作**
+```bash
+# 给搜索结果统一打标签
+zotero-cli --json item find "graph" | jq -r '.[].key' | zotero-cli item tag --keys-from - --add 已读
+
+# 用一个 JSONL 文件跑大量写操作，只起一个进程
+zotero-cli --json batch ops.jsonl --dry-run          # 只检查，不改库
+zotero-cli --json batch ops.jsonl --jsonl-progress   # 执行，每个操作输出一行结果
+```
+
+`ops.jsonl` 每行一个操作，支持 `tag`、`update`、`note`、`add-doi`、`add-pmid`，写法见英文 README 的 Bulk operations。执行前先检查每一行，有一行不合法就整批不执行；执行中某一行失败不影响其余行（加 `--stop-on-error` 则遇错即停）。连续的 `tag` 行合并成一次 bridge 调用。`.md` 笔记文件按 Markdown 处理，相对路径相对于 JSONL 文件所在目录。有操作失败时退出码为 1；DOI 导入成功但没找到开放获取 PDF 不算失败，计入 `partial`。
 
 **高级功能**
 ```bash

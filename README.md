@@ -295,11 +295,40 @@ feature and is not part of the DOCX writing workflow.
 ```bash
 zotero-cli item update KEY --field title="New Title"
 zotero-cli item tag KEY --add "important"
+zotero-cli item tag KEY1 KEY2 KEY3 --add "reviewed"     # one bridge call for all keys
 zotero-cli item attach KEY ./paper.pdf
 zotero-cli item find-pdf KEY
 zotero-cli note add KEY --text "My note"
 zotero-cli sync
 ```
+
+**Bulk operations**
+```bash
+# Tag everything a search returns, in one call
+zotero-cli --json item find "graph" | jq -r '.[].key' | zotero-cli item tag --keys-from - --add reviewed
+
+# Many write operations from one JSONL file, in one process
+zotero-cli --json batch ops.jsonl --dry-run          # validate only, change nothing
+zotero-cli --json batch ops.jsonl --jsonl-progress   # run, one result line per operation
+```
+
+`ops.jsonl` holds one operation per line:
+
+```jsonl
+{"op": "tag", "key": "ABCD1234", "add": ["reviewed"], "remove": ["unread"]}
+{"op": "update", "key": "ABCD1234", "fields": {"extra": "checked 2026-11"}}
+{"op": "note", "key": "ABCD1234", "file": "notes/ABCD1234.md"}
+{"op": "add-doi", "doi": "10.1371/journal.pcbi.1003285", "collection": "COLLKEY1", "tags": ["to-read"], "fetch_pdf": true}
+{"op": "add-pmid", "pmid": "32015507", "tags": ["to-read"]}
+```
+
+Every line is validated before anything runs, so a typo on one line does not leave
+the lines before it applied. Operations then run in order and a failed one does
+not stop the rest (pass `--stop-on-error` to stop). Consecutive `tag` lines go to
+Zotero in a single bridge call; with `--op tag`, lines can leave out `"op"`. Note
+files ending in `.md` are read as Markdown, and relative paths resolve against
+the JSONL file. The exit code is 1 when any operation failed; a DOI imported
+without an open-access PDF still counts as done and is reported under `partial`.
 
 **Advanced**
 ```bash

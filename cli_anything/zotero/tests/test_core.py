@@ -136,9 +136,9 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.3.0")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.3.0")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.3.0")
+            self.assertEqual(manifest["version"], "1.4.0")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.4.0")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.4.0")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
             # Zotero 10 disables plugins whose max version is below the running major.
@@ -1574,6 +1574,30 @@ class ImportCoreTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["code"], "ALREADY_HAS_PDF")
 
+    def test_fetch_pdf_asks_zotero_when_sqlite_cannot_see_the_item(self):
+        """A just-imported item is still in Zotero's WAL, invisible to the SQLite snapshot."""
+        from cli_anything.zotero.core import pdf_fetch
+
+        class FakeBridge:
+            def __init__(self, data):
+                self.data = data
+
+            def item_pdf_summary(self, key, *, library_id=1):
+                return {"ok": True, "data": self.data}
+
+            def find_pdf(self, *args, **kwargs):
+                raise AssertionError("should not call find_pdf")
+
+        with mock.patch("cli_anything.zotero.utils.zotero_sqlite.resolve_item", return_value=None):
+            payload = pdf_fetch.fetch_pdf_for_item(
+                self.runtime,
+                FakeBridge({"key": "ABCDEFGH", "title": "T", "DOI": "10.1/x", "hasPdf": True}),
+                "ABCDEFGH",
+            )
+            self.assertEqual((payload["code"], payload["DOI"]), ("ALREADY_HAS_PDF", "10.1/x"))
+            missing = pdf_fetch.fetch_pdf_for_item(self.runtime, FakeBridge(None), "ABCDEFGH")
+        self.assertEqual(missing["code"], "ITEM_NOT_FOUND")
+
     def test_add_doi_wraps_import(self):
         from cli_anything.zotero.core import add as add_mod
 
@@ -2258,3 +2282,302 @@ class DuplicateDetectionTests(unittest.TestCase):
         for entry in payload["items"]:
             for legacy_field in ("key", "title", "date", "setID"):
                 self.assertIn(legacy_field, entry)
+
+
+class BatchParsingTests(unittest.TestCase):
+    """`batch` validates every line before anything runs (#7)."""
+
+    def setUp(self):
+        from cli_anything.zotero.core import batch
+
+        self.batch = batch
+
+    def _parse(self, lines, **kw):
+        return self.batch.parse_lines(lines, **kw)
+
+    def test_parses_every_op_and_skips_blanks_and_comments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            note = Path(tmp) / "n.md"
+            note.write_text("# Heading\n\nbody", encoding="utf-8")
+            ops, errors = self._parse([
+                "# comment",
+                "",
+                '{"op": "tag", "key": "ABCD1234", "add": "reviewed"}',
+                '{"op": "tag", "keys": ["ABCD1234", "EFGH5678"], "remove": ["unread"]}',
+                '{"op": "update", "item_key": "ABCD1234", "fields": {"title": "T", "volume": 3}}',
+                '{"op": "note", "key": "ABCD1234", "file": "n.md"}',
+                '{"op": "note", "key": "ABCD1234", "text": "plain"}',
+                '{"op": "add-doi", "doi": "10.1000/xyz", "collection": "COLL0001", "tags": "t", "fetch_pdf": true}',
+                '{"op": "add-pmid", "pmid": 12345678}',
+            ], base_dir=Path(tmp))
+        self.assertEqual(errors, [])
+        self.assertEqual([o["op"] for o in ops], ["tag", "tag", "update", "note", "note", "add-doi", "add-pmid"])
+        self.assertEqual([o["line"] for o in ops], [3, 4, 5, 6, 7, 8, 9])
+        self.assertEqual(ops[0]["keys"], ["ABCD1234"])
+        self.assertEqual(ops[0]["add"], ["reviewed"])
+        self.assertEqual(ops[2]["key"], "ABCD1234")  # item_key alias
+        self.assertEqual(ops[2]["fields"], {"title": "T", "volume": "3"})
+        self.assertEqual(ops[3]["format"], "markdown")  # inferred from .md
+        self.assertTrue(ops[3]["file"].endswith("n.md"))
+        self.assertEqual(ops[4]["format"], "text")
+        self.assertEqual(ops[5]["tags"], ["t"])
+        self.assertTrue(ops[5]["fetch_pdf"])
+        self.assertEqual(ops[6]["pmid"], "12345678")
+
+    def test_default_op_applies_to_lines_without_op(self):
+        ops, errors = self._parse(['{"key": "ABCD1234", "add": ["x"]}'], default_op="tag")
+        self.assertEqual(errors, [])
+        self.assertEqual(ops[0]["op"], "tag")
+
+    def test_invalid_lines_are_reported_with_line_numbers(self):
+        ops, errors = self._parse([
+            "{not json",
+            "[1, 2]",
+            '{"op": "explode", "key": "ABCD1234"}',
+            '{"op": "tag", "key": "bad"}',
+            '{"op": "tag", "key": "ABCD1234"}',
+            '{"op": "note", "key": "ABCD1234", "text": "a", "file": "b.md"}',
+            '{"op": "note", "key": "ABCD1234", "file": "missing.md"}',
+            '{"op": "add-doi", "doi": "10.1/x", "if_exists": "merge"}',
+            '{"op": "add-pmid", "pmid": "PMC123"}',
+            '{"op": "update", "key": "ABCD1234", "fields": {}}',
+        ], base_dir=Path(tempfile.gettempdir()))
+        self.assertEqual(ops, [])
+        self.assertEqual([e["line"] for e in errors], list(range(1, 11)))
+
+    def test_parse_keys_validates_and_dedupes(self):
+        self.assertEqual(
+            self.batch.parse_keys(["ABCD1234", "  EFGH5678  # note", "", "# skip", "ABCD1234"]),
+            ["ABCD1234", "EFGH5678"],
+        )
+        with self.assertRaises(self.batch.BatchLineError):
+            self.batch.parse_keys(["ABCD1234", "'); evil(); ('"])
+
+    def test_invalid_input_summary_runs_nothing(self):
+        payload = self.batch.summarize([], parse_errors=[{"line": 2, "error": "x"}])
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "INVALID_INPUT")
+
+
+class _FakeBatchBridge:
+    """Records calls; items in `missing` do not exist."""
+
+    def __init__(self, missing=()):
+        self.missing = set(missing)
+        self.calls = []
+
+    def manage_tags_many(self, entries, *, library_id=1):
+        self.calls.append(("tags", [e["key"] for e in entries], library_id))
+        return {"ok": True, "data": [
+            {"key": e["key"], "ok": False, "error": "item not found"} if e["key"] in self.missing
+            else {"key": e["key"], "ok": True, "changed": True, "title": "T"}
+            for e in entries
+        ]}
+
+    def update_item_fields(self, key, fields, *, library_id=1):
+        self.calls.append(("update", key))
+        if key in self.missing:
+            return {"ok": True, "data": f"ERROR: item {key} not found"}
+        return {"ok": True, "data": "OK: updated T"}
+
+    def add_child_note(self, key, html, *, library_id=1):
+        self.calls.append(("note", key, html))
+        return {"ok": True, "data": {"ok": True, "key": "NOTE0001", "title": "T"}}
+
+
+class BatchRunTests(unittest.TestCase):
+    def setUp(self):
+        from cli_anything.zotero.core import batch
+
+        self.batch = batch
+
+    def _ops(self, *lines):
+        ops, errors = self.batch.parse_lines(lines)
+        self.assertEqual(errors, [])
+        return ops
+
+    def test_consecutive_tag_lines_share_one_bridge_call(self):
+        bridge = _FakeBatchBridge()
+        ops = self._ops(
+            '{"op": "tag", "key": "AAAA1111", "add": "x"}',
+            '{"op": "tag", "keys": ["BBBB2222", "CCCC3333"], "add": "x"}',
+            '{"op": "update", "key": "AAAA1111", "fields": {"title": "T"}}',
+            '{"op": "tag", "key": "DDDD4444", "add": "x"}',
+        )
+        rows = self.batch.run_batch(ops, runtime=None, bridge=bridge, library_id=7)
+        self.assertEqual(
+            bridge.calls,
+            [("tags", ["AAAA1111", "BBBB2222", "CCCC3333"], 7), ("update", "AAAA1111"), ("tags", ["DDDD4444"], 7)],
+        )
+        self.assertEqual([r["line"] for r in rows], [1, 2, 2, 3, 4])
+        self.assertTrue(all(r["ok"] for r in rows))
+        self.assertEqual(self.batch.summarize(rows)["status"], "success")
+
+    def test_large_tag_runs_are_chunked(self):
+        bridge = _FakeBatchBridge()
+        keys = [f"K{i:07d}" for i in range(self.batch.TAG_CHUNK + 5)]
+        payload = self.batch.tag_items(bridge, keys, ["x"], [], library_id=1)
+        self.assertEqual([len(c[1]) for c in bridge.calls], [self.batch.TAG_CHUNK, 5])
+        self.assertEqual(payload["total"], len(keys))
+        self.assertTrue(payload["ok"])
+
+    def test_bridge_error_strings_count_as_failures(self):
+        bridge = _FakeBatchBridge(missing={"MISS0000"})
+        rows = self.batch.run_batch(
+            self._ops(
+                '{"op": "update", "key": "MISS0000", "fields": {"title": "T"}}',
+                '{"op": "tag", "keys": ["AAAA1111", "MISS0000"], "add": "x"}',
+            ),
+            runtime=None,
+            bridge=bridge,
+        )
+        self.assertEqual([r["ok"] for r in rows], [False, True, False])
+        payload = self.batch.summarize(rows)
+        self.assertEqual((payload["status"], payload["failed"], payload["succeeded"]), ("partial_success", 2, 1))
+        from cli_anything.zotero.core.results import exit_code_for
+
+        self.assertEqual(exit_code_for(payload), 1)
+
+    def test_stop_on_error_skips_the_rest(self):
+        bridge = _FakeBatchBridge(missing={"MISS0000"})
+        rows = self.batch.run_batch(
+            self._ops(
+                '{"op": "update", "key": "MISS0000", "fields": {"title": "T"}}',
+                '{"op": "update", "key": "AAAA1111", "fields": {"title": "T"}}',
+            ),
+            runtime=None,
+            bridge=bridge,
+            stop_on_error=True,
+        )
+        self.assertEqual(bridge.calls, [("update", "MISS0000")])
+        self.assertEqual(rows[1]["status"], "skipped")
+        self.assertEqual(self.batch.summarize(rows)["skipped"], 1)
+
+    def test_exception_in_one_op_does_not_abort_the_batch(self):
+        bridge = _FakeBatchBridge()
+
+        def boom(*a, **k):
+            raise RuntimeError("bridge down")
+
+        bridge.update_item_fields = boom
+        rows = self.batch.run_batch(
+            self._ops(
+                '{"op": "update", "key": "AAAA1111", "fields": {"title": "T"}}',
+                '{"op": "note", "key": "AAAA1111", "text": "hello"}',
+            ),
+            runtime=None,
+            bridge=bridge,
+        )
+        self.assertFalse(rows[0]["ok"])
+        self.assertIn("bridge down", rows[0]["error"])
+        self.assertTrue(rows[1]["ok"])
+        self.assertEqual(rows[1]["note_key"], "NOTE0001")
+
+    def test_markdown_note_file_is_converted_to_html(self):
+        bridge = _FakeBatchBridge()
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "n.md").write_text("**bold** text", encoding="utf-8")
+            ops, _ = self.batch.parse_lines(['{"op": "note", "key": "AAAA1111", "file": "n.md"}'], base_dir=Path(tmp))
+            self.batch.run_batch(ops, runtime=None, bridge=bridge)
+        html = bridge.calls[0][2]
+        self.assertIn("<strong>bold</strong>", html)
+
+
+class BatchBridgeJsTests(unittest.TestCase):
+    """New bridge calls embed values as JSON literals, not hand-escaped strings."""
+
+    def _captured(self, method, *args, **kwargs):
+        seen = {}
+
+        def fake_execute(self, code, **kw):
+            seen["code"] = code
+            return {"ok": True, "data": [], "error": None}
+
+        with mock.patch.object(jsbridge.JSBridgeClient, "execute_js", fake_execute):
+            getattr(jsbridge.JSBridgeClient(), method)(*args, **kwargs)
+        return seen["code"]
+
+    def test_manage_tags_many_embeds_entries_as_json(self):
+        tricky = "it's a \\ \"tag\"\nnext"
+        code = self._captured("manage_tags_many", [{"key": "AAAA1111", "add": [tricky], "remove": []}], library_id=3)
+        self.assertIn(json.dumps(tricky, ensure_ascii=False), code)
+        self.assertIn("var LIB = 3;", code)
+        self.assertIn("hasChanged()", code)
+
+    def test_update_and_single_tag_survive_backslashes_and_newlines(self):
+        value = "C:\\path\nline 2 'quoted'"
+        code = self._captured("update_item_fields", "AAAA1111", {"extra": value})
+        self.assertIn(json.dumps(value, ensure_ascii=False), code)
+        code = self._captured("manage_tags", "AAAA1111", [value], [])
+        self.assertIn(f"item.addTag({json.dumps(value, ensure_ascii=False)})", code)
+
+    def test_add_child_note_checks_parent_is_regular_item(self):
+        code = self._captured("add_child_note", "AAAA1111", "<p>x</p>")
+        self.assertIn("isRegularItem()", code)
+        self.assertIn('note.setNote("<p>x</p>")', code)
+
+
+class BatchCliTests(unittest.TestCase):
+    def _run(self, argv, bridge):
+        import contextlib
+        import io
+
+        from cli_anything.zotero import zotero_cli
+
+        out = io.StringIO()
+        with mock.patch.object(zotero_cli, "current_bridge", return_value=bridge), \
+                mock.patch.object(zotero_cli, "current_runtime", return_value=None), \
+                mock.patch.object(zotero_cli, "current_session", return_value={}), \
+                contextlib.redirect_stdout(out):
+            code = zotero_cli.dispatch(argv)
+        return code, out.getvalue()
+
+    def test_batch_with_an_invalid_line_changes_nothing(self):
+        bridge = _FakeBatchBridge()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ops.jsonl"
+            path.write_text('{"op": "tag", "key": "AAAA1111", "add": "x"}\n{"op": "tag", "key": "nope"}\n', encoding="utf-8")
+            code, out = self._run(["--json", "batch", str(path)], bridge)
+        self.assertEqual(code, 1)
+        self.assertEqual(bridge.calls, [])
+        self.assertEqual(json.loads(out)["code"], "INVALID_INPUT")
+
+    def test_batch_dry_run_calls_nothing(self):
+        bridge = _FakeBatchBridge()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ops.jsonl"
+            path.write_text('{"key": "AAAA1111", "add": "x"}\n', encoding="utf-8")
+            code, out = self._run(["--json", "batch", str(path), "--op", "tag", "--dry-run"], bridge)
+        self.assertEqual(code, 0)
+        self.assertEqual(bridge.calls, [])
+        self.assertEqual(json.loads(out)["total"], 1)
+
+    def test_batch_runs_and_reports(self):
+        bridge = _FakeBatchBridge(missing={"MISS0000"})
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ops.jsonl"
+            path.write_text('{"op": "tag", "keys": ["AAAA1111", "MISS0000"], "add": "x"}\n', encoding="utf-8")
+            code, out = self._run(["--json", "batch", str(path)], bridge)
+        payload = json.loads(out)
+        self.assertEqual(code, 1)
+        self.assertEqual((payload["succeeded"], payload["failed"]), (1, 1))
+
+    def test_item_tag_accepts_many_keys_and_keys_from_file(self):
+        bridge = _FakeBatchBridge()
+        with tempfile.TemporaryDirectory() as tmp:
+            keys = Path(tmp) / "keys.txt"
+            keys.write_text("BBBB2222\nCCCC3333\nAAAA1111\n", encoding="utf-8")
+            code, out = self._run(
+                ["--json", "item", "tag", "AAAA1111", "--keys-from", str(keys), "--add", "reviewed"], bridge
+            )
+        self.assertEqual(code, 0)
+        self.assertEqual(bridge.calls, [("tags", ["AAAA1111", "BBBB2222", "CCCC3333"], 1)])
+        self.assertEqual(json.loads(out)["total"], 3)
+
+    def test_item_tag_single_key_keeps_the_old_path(self):
+        bridge = mock.Mock()
+        bridge.manage_tags.return_value = {"ok": True, "data": "OK: tags updated for T"}
+        code, out = self._run(["item", "tag", "AAAA1111", "--add", "x"], bridge)
+        self.assertEqual(code, 0)
+        bridge.manage_tags.assert_called_once()
+        self.assertIn("OK: tags updated", out)
