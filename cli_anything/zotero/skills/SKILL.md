@@ -225,8 +225,8 @@ zotero-cli --json collection stats COLLECTION_KEY
 # Create / rename / trash / restore collection
 zotero-cli collection create "New Collection"
 zotero-cli collection rename COLLECTION_KEY --name "New Name"
-zotero-cli collection delete COLLECTION_KEY --confirm      # to trash (reversible)
-zotero-cli collection restore COLLECTION_KEY
+zotero-cli collection delete COLLECTION_KEY --confirm      # to trash with subcollections (reversible)
+zotero-cli collection restore COLLECTION_KEY               # subcollections come back too
 zotero-cli collection delete COLLECTION_KEY --permanent --yes-erase   # irreversible
 
 # Add/remove items from collection

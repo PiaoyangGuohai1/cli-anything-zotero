@@ -397,10 +397,11 @@ def gate_destructive(
 
     detail = (
         f"PERMANENT ERASE of {noun} '{target}'.\n"
-        "  This bypasses the trash entirely. It is IRREVERSIBLE: the item is\n"
-        "  removed from the database, not recoverable from the trash, and any\n"
-        "  citation key pinned to it is orphaned in every document citing it.\n"
+        f"  This bypasses the trash entirely. It is IRREVERSIBLE: the {noun} is\n"
+        "  removed from the database and is not recoverable from the trash.\n"
     )
+    if noun == "item":
+        detail += "  Any citation key pinned to it is orphaned in every document citing it.\n"
     if confirm:
         detail += "  --confirm does not authorize a permanent erase.\n"
     if not _stdin_is_interactive():
@@ -998,7 +999,11 @@ def collection_remove_item_command(ctx: click.Context, collection_key: str, item
 
 @collection.command("delete")
 @click.argument("collection_key")
-@click.option("--delete-items", is_flag=True, help="Also send the collection's items to the trash.")
+@click.option(
+    "--delete-items",
+    is_flag=True,
+    help="Also send the items of the collection and of all its subcollections to the trash.",
+)
 @click.option(
     "--confirm",
     is_flag=True,
@@ -1025,9 +1030,11 @@ def collection_delete_command(
 ) -> int:
     """Move a collection to the trash (via JS bridge).
 
-    Default behaviour matches the Zotero UI: the collection goes to the trash
-    and can be brought back with `zotero-cli collection restore KEY`. Items stay
-    in the library unless --delete-items is given, which trashes them too.
+    Default behaviour matches the Zotero UI: the collection and its
+    subcollections go to the trash and can be brought back with
+    `zotero-cli collection restore KEY`. Items stay in the library unless
+    --delete-items is given, which trashes the items of the collection and of
+    every subcollection too (restore those with `zotero-cli item restore KEY`).
 
     Add --permanent to erase outright. That bypasses the trash and cannot be
     undone, so it needs --yes-erase and prompts even when --confirm is given.
@@ -1051,7 +1058,7 @@ def collection_delete_command(
 @click.argument("collection_key")
 @click.pass_context
 def collection_restore_command(ctx: click.Context, collection_key: str) -> int:
-    """Restore a trashed collection (via JS bridge)."""
+    """Restore a trashed collection and its subcollections (via JS bridge)."""
     result = current_bridge(ctx).restore_collection(collection_key)
     return emit_js(ctx, result)
 

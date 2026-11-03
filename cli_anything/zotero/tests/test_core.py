@@ -1976,6 +1976,32 @@ class DeleteSemanticsTests(unittest.TestCase):
         self.assertIn("col.deleted = false", code)
         self.assertNotIn("eraseTx", code)
 
+    def test_delete_collection_with_items_uses_zotero_cascade(self):
+        """--delete-items must reach items in subcollections, as the Zotero UI does.
+
+        Zotero.Collection.trash() trashes every subcollection; only the
+        deleteItems save option makes it trash the items at every depth too.
+        Trashing just col.getChildItems() leaves nested items in the library
+        while their subcollections sit in the trash.
+        """
+        cascade = self._captured_js("delete_collection", "COLLKEY1", delete_items=True)
+        self.assertIn("saveTx({ deleteItems: true })", cascade)
+        self.assertNotIn("getChildItems", cascade)
+        keep = self._captured_js("delete_collection", "COLLKEY1")
+        self.assertIn("saveTx({ deleteItems: false })", keep)
+
+    def test_delete_collection_checks_trash_state_before_changing_anything(self):
+        code = self._captured_js("delete_collection", "COLLKEY1", delete_items=True)
+        self.assertLess(code.index("ALREADY_TRASHED"), code.index("deleted = true"))
+        self.assertLess(code.index("ALREADY_TRASHED"), code.index("saveTx"))
+
+    def test_restore_collection_brings_back_subcollections(self):
+        """Trashing a collection trashes its subcollections, so restore must undo both."""
+        code = self._captured_js("restore_collection", "COLLKEY1")
+        self.assertIn("getDescendents(false, 'collection', true)", code)
+        self.assertIn("c.deleted = false", code)
+        self.assertIn("executeTransaction", code)
+
 
 class DestructiveGateTests(unittest.TestCase):
     """--confirm must never be sufficient to erase."""

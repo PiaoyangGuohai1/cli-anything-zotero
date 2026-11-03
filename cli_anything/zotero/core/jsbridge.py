@@ -701,9 +701,11 @@ class JSBridgeClient:
     ) -> dict:
         """Move a collection to the trash, or (``permanent=True``) erase it.
 
-        Default is the trash, matching the Zotero UI. ``delete_items`` carries
-        the member items along with the collection rather than leaving them in
-        the library; it is honoured on both paths.
+        Default is the trash, matching the Zotero UI: Zotero moves the
+        collection and all of its subcollections to the trash together.
+        ``delete_items`` also trashes the items in the collection and in every
+        subcollection rather than leaving them in the library; it is honoured
+        on both paths.
         """
         if permanent:
             erase = (
@@ -719,35 +721,50 @@ class JSBridgeClient:
                 f"return 'ERASED: collection ' + name;"
             )
             return self.execute_js(js, wait_seconds=4)
-        trash_items_js = (
-            "var childIDs = col.getChildItems(true) || []; "
-            "for (var cid of childIDs) { var ci = Zotero.Items.get(cid); "
-            "  if (ci && !ci.deleted) { ci.deleted = true; await ci.saveTx(); trashed++; } } "
-        ) if delete_items else ""
+        # Same call the Zotero UI makes (collectionTree.deleteSelection): saving
+        # with deleted=true runs Zotero.Collection.trash(), which trashes every
+        # subcollection and, with deleteItems, every item at any depth.
+        delete_items_js = "true" if delete_items else "false"
         js = (
             f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
             f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
-            f"var name = col.name; var trashed = 0; "
-            f"{trash_items_js}"
+            f"var name = col.name; "
             f"if (col.deleted) {{ return 'ALREADY_TRASHED: collection ' + name; }} "
+            f"var subs = col.getDescendents(false, 'collection', false).length; "
+            f"var itemIDs = {delete_items_js} "
+            f"? Array.from(new Set(col.getDescendents(false, 'item', false).map(d => d.id))) : []; "
             f"col.deleted = true; "
-            f"await col.saveTx(); "
-            f"return 'TRASHED: collection ' + name + (trashed ? ' (+' + trashed + ' items)' : '');"
+            f"await col.saveTx({{ deleteItems: {delete_items_js} }}); "
+            f"var trashed = itemIDs.filter(id => {{ var i = Zotero.Items.get(id); return i && i.deleted; }}).length; "
+            f"return 'TRASHED: collection ' + name "
+            f"+ (subs ? ' (+' + subs + ' subcollections)' : '') "
+            f"+ (trashed ? ' (+' + trashed + ' items)' : '');"
         )
         return self.execute_js(js, wait_seconds=8)
 
     def restore_collection(self, collection_key: str, *, library_id: int = 1) -> dict:
-        """Restore a trashed collection."""
+        """Restore a trashed collection together with its trashed subcollections.
+
+        Matches the Zotero UI's "Restore to Library", which brings the
+        subcollections back with the collection. Items trashed through
+        ``delete --delete-items`` stay in the trash, as they do in the UI;
+        restore them with ``restore_item``.
+        """
         js = (
             f"var col = Zotero.Collections.getByLibraryAndKey({library_id}, '{collection_key}'); "
             f"if (!col) {{ return 'ERROR: collection {collection_key} not found'; }} "
             f"var name = col.name; "
             f"if (!col.deleted) {{ return 'NOT_TRASHED: collection ' + name; }} "
-            f"col.deleted = false; "
-            f"await col.saveTx(); "
-            f"return 'RESTORED: collection ' + name;"
+            f"var subs = col.getDescendents(false, 'collection', true) "
+            f".map(d => Zotero.Collections.get(d.id)).filter(c => c && c.deleted); "
+            f"await Zotero.DB.executeTransaction(async () => {{ "
+            f"col.deleted = false; await col.save(); "
+            f"for (var c of subs) {{ c.deleted = false; await c.save(); }} "
+            f"}}); "
+            f"return 'RESTORED: collection ' + name "
+            f"+ (subs.length ? ' (+' + subs.length + ' subcollections)' : '');"
         )
-        return self.execute_js(js, wait_seconds=4)
+        return self.execute_js(js, wait_seconds=8)
 
     def update_collection(self, collection_key: str, *, name: str | None = None, parent_key: str | None = None, library_id: int = 1) -> dict:
         set_lines = ""

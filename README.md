@@ -211,13 +211,16 @@ manuscript already cites, so resolve the key before merging.
 ```bash
 zotero-cli item delete ITEM_KEY --confirm     # -> trash. Reversible.
 zotero-cli item restore ITEM_KEY              # <- back out of the trash
-zotero-cli collection delete COLLECTION_KEY --confirm
-zotero-cli collection restore COLLECTION_KEY
+zotero-cli collection delete COLLECTION_KEY --confirm   # with its subcollections
+zotero-cli collection restore COLLECTION_KEY            # brings the subcollections back too
 ```
 
 `delete` moves things to the Zotero trash, exactly as the Delete key does in the
 Zotero UI. Trashed items keep their keys and stay recoverable until you empty the
-trash, which the CLI never does for you.
+trash, which the CLI never does for you. `collection delete --delete-items` also
+trashes the items of the collection and of every subcollection; `collection restore`
+leaves those items in the trash, as the Zotero UI does, so restore them with
+`item restore`.
 
 Permanent erasure is a separate path and bypasses the trash entirely:
 

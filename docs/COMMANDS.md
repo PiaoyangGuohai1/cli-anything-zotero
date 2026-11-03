@@ -80,9 +80,9 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `collection fetch-pdfs <key> [--sources ...] [--limit N] [--jsonl-progress] [--resume]` | Zotero + OA cascade; optional resume state | JS Bridge + HTTP |
 | `collection remove-item <col_key> <item_key>` | Remove item from collection (keeps item) | JS Bridge |
 | `collection rename <key> --name/--parent` | Rename or move collection | JS Bridge |
-| `collection delete <key> [--confirm] [--delete-items]` | Move collection to the trash (reversible) | JS Bridge |
+| `collection delete <key> [--confirm] [--delete-items]` | Move collection and its subcollections to the trash (reversible); `--delete-items` also trashes their items | JS Bridge |
 | `collection delete <key> --permanent --yes-erase` | Erase collection outright (irreversible) | JS Bridge |
-| `collection restore <key>` | Restore a trashed collection | JS Bridge |
+| `collection restore <key>` | Restore a trashed collection and its subcollections | JS Bridge |
 | `collection use-selected` | Use currently selected collection in Zotero GUI | Connector |
 
 ## add -- Unified Ingest (preferred for agents)

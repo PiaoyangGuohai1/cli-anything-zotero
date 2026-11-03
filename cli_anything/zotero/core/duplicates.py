@@ -19,7 +19,8 @@ Two items are clustered when either holds:
 a. ``doi`` -- their normalized DOIs are byte-equal.
 b. ``title+creator+year`` -- their normalized titles are equal AND they share at
    least one normalized creator surname AND their years agree (within
-   ``year_tolerance``, default 0).
+   ``year_tolerance``, default 1, which lets a preprint and its published
+   version cluster; 0 requires the same year).
 
 Rule (b) requires positive confirmation on both creator and year. An item with
 no creators, or with no parseable year, is never clustered by title alone --
@@ -227,7 +228,7 @@ def _keep_rank(record: dict[str, Any]) -> tuple:
 def cluster_records(
     records: list[dict[str, Any]],
     *,
-    year_tolerance: int = 0,
+    year_tolerance: int = 1,
     min_title_chars: int = 8,
 ) -> list[dict[str, Any]]:
     """Cluster item records into duplicate groups. Pure function, no I/O."""
@@ -329,7 +330,7 @@ def find_duplicates(
     *,
     library_id: int = 1,
     limit: int = 50,
-    year_tolerance: int = 0,
+    year_tolerance: int = 1,
     timeout: int = 60,
 ) -> dict[str, Any]:
     """Find duplicate clusters via the JS bridge, using only public Zotero APIs.
