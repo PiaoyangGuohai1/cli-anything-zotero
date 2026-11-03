@@ -105,7 +105,7 @@ The `legacy/mcp` branch and the `v0.9.5` release remain available, but MCP recei
 
 ## Installation
 
-**Prerequisites:** Python 3.10+, Zotero 7/8/9 (running).
+**Prerequisites:** Python 3.10+, Zotero 7+ (running).
 
 ### Step 1: Install the package
 
@@ -157,6 +157,7 @@ zotero-cli js "return Zotero.version"
 | `Cannot resolve Zotero profile directory` | Launch Zotero at least once first |
 | Plugin not appearing | Restart Zotero after installing the `.xpi` |
 | `endpoint_active: false` | Plugin failed to load — reinstall via Zotero UI |
+| `No endpoint found` after a Zotero major upgrade | Zotero disabled the bridge as incompatible; run `zotero-cli app doctor` (reports `app_disabled`), upgrade cli-anything-zotero, then `zotero-cli app install-plugin` and restart Zotero |
 | Windows: `pip` not recognized | Close and reopen PowerShell after installing Python |
 
 ---

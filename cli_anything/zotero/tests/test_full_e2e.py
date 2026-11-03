@@ -99,8 +99,13 @@ def choose_collection() -> dict | None:
 def choose_tag_name() -> str | None:
     if not HAS_LOCAL_DATA:
         return None
-    tags = zotero_sqlite.fetch_tags(ENVIRONMENT.sqlite_path, library_id=zotero_sqlite.default_library_id(ENVIRONMENT.sqlite_path))
-    return tags[0]["name"] if tags else None
+    library_id = zotero_sqlite.default_library_id(ENVIRONMENT.sqlite_path)
+    tags = zotero_sqlite.fetch_tags(ENVIRONMENT.sqlite_path, library_id=library_id)
+    # Tags that only sit on attachments resolve to zero top-level items.
+    for tag in tags[:50]:
+        if zotero_sqlite.fetch_items(ENVIRONMENT.sqlite_path, library_id=library_id, tag=tag["name"]):
+            return tag["name"]
+    return None
 
 
 SAMPLE_COLLECTION = choose_collection()
@@ -170,7 +175,8 @@ class ZoteroFullE2E(unittest.TestCase):
     def test_item_find_and_context_commands(self):
         assert SAMPLE_ITEM is not None
         title = zotero_sqlite.resolve_item(ENVIRONMENT.sqlite_path, SAMPLE_ITEM["itemID"])["title"]
-        query = title.split()[0]
+        # The longest word keeps the query selective in a large real library.
+        query = max(title.split(), key=len)
 
         item_find = self.run_cli(["--json", "item", "find", query, "--limit", "5"])
         self.assertEqual(item_find.returncode, 0, msg=item_find.stderr)

@@ -20,6 +20,7 @@ def run_doctor(runtime: RuntimeContext, bridge: JSBridgeClient) -> dict[str, Any
     update_available = bool(
         installed_version and bundled_version and installed_version != bundled_version
     )
+    app_disabled = zotero_paths.plugin_app_disabled(profile_dir)
     active = bridge.bridge_endpoint_active()
 
     js_ok = False
@@ -68,12 +69,13 @@ def run_doctor(runtime: RuntimeContext, bridge: JSBridgeClient) -> dict[str, Any
             "configured": bool(runtime.environment.local_api_enabled_configured),
         },
         "plugin": {
-            "ok": bool(installed and not update_available),
+            "ok": bool(installed and not update_available and not app_disabled),
             "xpi_installed": installed,
             "xpi_path": str(xpi_path) if xpi_path else None,
             "installed_version": installed_version,
             "bundled_version": bundled_version,
             "update_available": update_available,
+            "app_disabled": app_disabled,
         },
         "bridge": {
             "ok": bool(active and js_ok),
@@ -95,6 +97,12 @@ def run_doctor(runtime: RuntimeContext, bridge: JSBridgeClient) -> dict[str, Any
         )
     if not installed:
         next_steps.append("Install CLI Bridge: zotero-cli app install-plugin, then restart Zotero.")
+    elif app_disabled:
+        next_steps.append(
+            f"Zotero {runtime.environment.version} disabled CLI Bridge {installed_version} "
+            "as incompatible. Upgrade cli-anything-zotero, run: zotero-cli app install-plugin, "
+            "then restart Zotero."
+        )
     elif update_available:
         next_steps.append(
             f"Upgrade CLI Bridge {installed_version} → {bundled_version}: "
@@ -138,6 +146,16 @@ def plugin_version_warning(runtime: RuntimeContext) -> dict[str, Any] | None:
     profile_dir = runtime.environment.profile_dir
     installed = zotero_paths.installed_plugin_version(profile_dir)
     bundled = zotero_paths.bundled_plugin_version()
+    if zotero_paths.plugin_app_disabled(profile_dir):
+        return {
+            "warning": "plugin_incompatible",
+            "installed_version": installed,
+            "bundled_version": bundled,
+            "message": (
+                f"Zotero {runtime.environment.version} disabled CLI Bridge {installed}. "
+                "Upgrade cli-anything-zotero, run: zotero-cli app install-plugin, then restart Zotero."
+            ),
+        }
     if installed and bundled and installed != bundled:
         return {
             "warning": "plugin_version_mismatch",
