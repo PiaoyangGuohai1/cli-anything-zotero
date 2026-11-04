@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
 import tempfile
@@ -136,9 +137,9 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.4.0")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.4.0")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.4.0")
+            self.assertEqual(manifest["version"], "1.4.1")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.4.1")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.4.1")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
             # Zotero 10 disables plugins whose max version is below the running major.
@@ -2581,3 +2582,91 @@ class BatchCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         bridge.manage_tags.assert_called_once()
         self.assertIn("OK: tags updated", out)
+
+
+class WalSnapshotTests(unittest.TestCase):
+    """SQLite reads must see writes Zotero has not checkpointed yet.
+
+    Zotero 10 keeps its database in WAL mode under an EXCLUSIVE lock, so an
+    `immutable=1` read of the main file alone misses whatever is still in the
+    WAL -- usually the item that was just imported.
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        self.db = (root / "zotero.sqlite").resolve()
+        self.cache = root / "cache"
+        patcher = mock.patch.dict("os.environ", {zotero_sqlite.CACHE_DIR_ENV: str(self.cache)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.writer = sqlite3.connect(self.db, isolation_level=None)
+        self.addCleanup(self.writer.close)
+        self.writer.execute("PRAGMA journal_mode=WAL")
+        self.writer.execute("PRAGMA main.locking_mode=EXCLUSIVE")
+        self.writer.execute("CREATE TABLE t(id INTEGER PRIMARY KEY, v TEXT)")
+        self.writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    def _write(self, n):
+        self.writer.execute("BEGIN")
+        self.writer.executemany("INSERT INTO t(v) VALUES (?)", [("x",)] * n)
+        self.writer.execute("COMMIT")
+
+    def _count(self):
+        conn = zotero_sqlite.connect_readonly(self.db)
+        try:
+            return conn.execute("SELECT count(*) FROM t").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_reads_see_rows_still_in_the_wal(self):
+        self._write(5)
+        self.assertEqual(self._count(), 5)
+
+    def test_without_the_snapshot_the_rows_are_invisible(self):
+        """Documents the blind spot the snapshot exists to close."""
+        self._write(5)
+        with mock.patch.dict("os.environ", {zotero_sqlite.SNAPSHOT_ENV: "0"}):
+            self.assertEqual(self._count(), 0)
+
+    def test_snapshot_is_reused_until_the_source_changes(self):
+        self._write(3)
+        first = zotero_sqlite.wal_snapshot(self.db)
+        stamp = first.stat().st_mtime_ns
+        self.assertEqual(zotero_sqlite.wal_snapshot(self.db).stat().st_mtime_ns, stamp)
+        self._write(2)
+        self.assertEqual(self._count(), 5)
+
+    def test_no_wal_means_no_copy(self):
+        self._write(2)
+        self.writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        self.assertIsNone(zotero_sqlite.wal_snapshot(self.db))
+        self.assertEqual(self._count(), 2)
+        self.assertFalse(self.cache.exists())
+
+    def test_a_write_cut_off_mid_frame_is_dropped_not_corrupting(self):
+        self._write(4)
+        self._write(4)
+        wal = self.db.with_name(self.db.name + "-wal")
+        data = wal.read_bytes()
+        torn_dir = Path(self.cache.parent) / "torn"
+        torn_dir.mkdir()
+        torn = torn_dir / "zotero.sqlite"
+        torn.write_bytes(self.db.read_bytes())
+        (torn_dir / "zotero.sqlite-wal").write_bytes(data[:-3000])
+        snap = zotero_sqlite.wal_snapshot(torn.resolve())
+        conn = sqlite3.connect(f"file:{snap.as_posix()}?mode=ro&immutable=1", uri=True)
+        try:
+            self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(conn.execute("SELECT count(*) FROM t").fetchone()[0], 4)
+        finally:
+            conn.close()
+
+    @unittest.skipIf(os.name == "nt", "POSIX permissions")
+    def test_snapshot_directory_is_private(self):
+        import stat
+
+        self._write(1)
+        snap = zotero_sqlite.wal_snapshot(self.db)
+        self.assertEqual(stat.S_IMODE(snap.parent.stat().st_mode), 0o700)

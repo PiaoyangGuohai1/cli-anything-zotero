@@ -145,6 +145,8 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `ZOTERO_EMBED_MODEL` | `nomic-embed-text` | Embedding model name |
 | `ZOTERO_EMBED_KEY` | *(empty)* | API key for embedding service |
 | `ZOTERO_VECTOR_DB` | `~/Zotero/cli-anything-vectors.sqlite` | Path to vector database for semantic search |
+| `CLI_ANYTHING_ZOTERO_CACHE_DIR` | `~/.cache/cli-anything-zotero` (Windows: `%LOCALAPPDATA%\cli-anything-zotero\cache`) | Where the private database snapshot is kept (see below) |
+| `CLI_ANYTHING_ZOTERO_SQLITE_SNAPSHOT` | `1` | `0` reads `zotero.sqlite` directly, without folding in Zotero's write-ahead log |
 
 ## Backend Architecture
 
@@ -156,3 +158,9 @@ Four backend layers, auto-selected per command:
 | **Connector API** | `localhost:23119/connector/*` | Import items + attachments | ~1s |
 | **Local API** | `localhost:23119/api/*` | Citation rendering, BibTeX export | ~1s |
 | **JS Bridge** | `localhost:23119/cli-bridge/eval` | Everything else (attach PDF, find PDF, update, tags, sync) | ~0.5s |
+
+Zotero 10 keeps its database in WAL mode under an exclusive lock, so recent writes sit in
+`zotero.sqlite-wal` where a plain read-only open cannot see them. SQLite reads therefore use a
+private snapshot: `zotero.sqlite` and its WAL are copied to the cache directory and checkpointed,
+and the copy is rebuilt only when either file changes (a few tens of milliseconds for a 40 MB
+library). The directory is created `0700`, since the copy holds the whole library.

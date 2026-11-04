@@ -52,7 +52,7 @@ class CliEntrypointTests(unittest.TestCase):
         self.addCleanup(self.tmpdir.cleanup)
         self.env_paths = create_sample_environment(Path(self.tmpdir.name))
 
-    def run_cli(self, args, input_text=None, extra_env=None):
+    def cli_env(self, extra_env=None):
         env = os.environ.copy()
         if uses_module_fallback(self.CLI_BASE):
             env["PYTHONPATH"] = str(REPO_ROOT / "zotero" / "agent-harness") + os.pathsep + env.get("PYTHONPATH", "")
@@ -63,7 +63,44 @@ class CliEntrypointTests(unittest.TestCase):
         env["CLI_ANYTHING_ZOTERO_STATE_DIR"] = str(Path(self.tmpdir.name) / "state")
         if extra_env:
             env.update(extra_env)
+        return env
+
+    def run_cli(self, args, input_text=None, extra_env=None):
+        env = self.cli_env(extra_env)
         return subprocess.run(self.CLI_BASE + args, input=input_text, capture_output=True, text=True, env=env)
+
+    def _assert_survives_encoding(self, env, expect_arrow: bytes, *, check_error_text: bool = True):
+        root_help = subprocess.run(self.CLI_BASE + ["--help"], capture_output=True, env=env)
+        self.assertEqual(root_help.returncode, 0, msg=root_help.stderr.decode("utf-8", "replace"))
+        # This help text contains U+2192, the character from the report.
+        doi_help = subprocess.run(self.CLI_BASE + ["import", "doi", "--help"], capture_output=True, env=env)
+        self.assertEqual(doi_help.returncode, 0, msg=doi_help.stderr.decode("utf-8", "replace"))
+        self.assertIn(expect_arrow, doi_help.stdout)
+        # Error messages go to stderr, which needs the same treatment.
+        bad = subprocess.run(
+            self.CLI_BASE + ["item", "tag", "→KEY", "OTHERKEY", "--add", "x"], capture_output=True, env=env
+        )
+        self.assertEqual(bad.returncode, 1)
+        self.assertNotIn(b"Traceback", bad.stderr)
+        if check_error_text:  # argv is decoded with the locale, so only exact under a UTF-8 locale
+            self.assertIn(expect_arrow + b"KEY", bad.stderr)
+
+    @unittest.skipIf(sys.platform == "win32", "needs a POSIX latin-1 locale")
+    def test_non_utf8_locale_pipe_switches_to_utf8(self):
+        """#13: a pipe whose locale encoding is not UTF-8 (cp1252 on Windows over SSH) gets UTF-8."""
+        env = self.cli_env({"PYTHONUTF8": "0", "LC_ALL": "en_US.ISO8859-1", "LANG": "en_US.ISO8859-1"})
+        env.pop("PYTHONIOENCODING", None)
+        probe = subprocess.run(
+            [sys.executable, "-c", "import sys; print(sys.stdout.encoding)"], capture_output=True, text=True, env=env
+        )
+        if "8859" not in probe.stdout:
+            self.skipTest(f"latin-1 locale unavailable (stdout encoding {probe.stdout.strip()!r})")
+        self._assert_survives_encoding(env, "→".encode("utf-8"), check_error_text=False)
+
+    def test_explicit_pythonioencoding_is_kept_and_escaped(self):
+        """#13: an encoding chosen with PYTHONIOENCODING is respected; unencodable text is escaped."""
+        env = self.cli_env({"PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"})
+        self._assert_survives_encoding(env, b"\\u2192")
 
     def test_help_renders_groups(self):
         result = self.run_cli(["--help"])
@@ -78,7 +115,7 @@ class CliEntrypointTests(unittest.TestCase):
     def test_version_option_reports_package_version(self):
         result = self.run_cli(["--version"])
         self.assertEqual(result.returncode, 0, msg=result.stderr)
-        self.assertIn("1.4.0", result.stdout)
+        self.assertIn("1.4.1", result.stdout)
 
     def test_dispatch_uses_requested_prog_name(self):
         result = dispatch(["--help"], prog_name="zotero-cli")

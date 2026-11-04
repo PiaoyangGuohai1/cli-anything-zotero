@@ -94,7 +94,9 @@ def build_index(zotero_sqlite: str, *, batch_size: int = 20) -> dict:
 
     # Read items from Zotero SQLite
     try:
-        src = sqlite3.connect(f"file:{zotero_sqlite}?mode=ro&immutable=1", uri=True)
+        from cli_anything.zotero.utils import zotero_sqlite as zotero_sqlite_mod
+
+        src = zotero_sqlite_mod.connect_readonly(zotero_sqlite)
         rows = src.execute("""
             SELECT i.key, MAX(CASE WHEN f.fieldName='title' THEN iv.value END),
                    MAX(CASE WHEN f.fieldName='abstractNote' THEN iv.value END)

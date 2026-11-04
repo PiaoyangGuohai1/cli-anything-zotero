@@ -1,7 +1,7 @@
 # Roadmap — cli-anything-zotero
 
 Last updated: 2026-11-03  
-Current release: **v1.4.0** (CLI Bridge plugin **1.4.0**)
+Current release: **v1.4.1** (CLI Bridge plugin **1.4.1**)
 
 ## Positioning
 
@@ -30,6 +30,7 @@ and tell the user to start it.
 | **1.2.2** | Zotero 10 support (#8, #9, #11) |
 | **1.3.0** | `delete` moves to the trash, `restore`, `--permanent --yes-erase`; duplicate detection on public APIs (#10) |
 | **1.4.0** | `batch` JSONL runner; multi-key `item tag` / `--keys-from` (#7); `fetch-pdf` sees items still in Zotero's WAL |
+| **1.4.1** | SQLite reads see Zotero 10's uncheckpointed writes (WAL snapshot); no `UnicodeEncodeError` on non-UTF-8 consoles (#13) |
 
 ## 1.2.1 — Session library default + Windows attach
 

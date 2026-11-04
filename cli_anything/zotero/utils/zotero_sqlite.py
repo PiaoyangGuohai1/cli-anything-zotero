@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import html
+import json
 import os
 import random
 import re
 import shutil
 import sqlite3
+import tempfile
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
@@ -22,11 +25,98 @@ class AmbiguousReferenceError(RuntimeError):
     """Raised when a bare Zotero key matches records in multiple libraries."""
 
 
+SNAPSHOT_ENV = "CLI_ANYTHING_ZOTERO_SQLITE_SNAPSHOT"
+CACHE_DIR_ENV = "CLI_ANYTHING_ZOTERO_CACHE_DIR"
+
+
+def snapshot_root() -> Path:
+    """Per-user cache directory for database snapshots."""
+    override = os.environ.get(CACHE_DIR_ENV, "").strip()
+    if override:
+        return Path(override).expanduser()
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / "cli-anything-zotero" / "cache"
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "cli-anything-zotero"
+
+
+def _file_sig(path: Path) -> list[int] | None:
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    return [st.st_size, st.st_mtime_ns]
+
+
+def wal_snapshot(path: Path, *, attempts: int = 3) -> Path | None:
+    """Return a private copy of ``path`` with its write-ahead log folded in.
+
+    Zotero 10 runs its database in WAL mode under an EXCLUSIVE lock, so no
+    other process can open it normally, and an ``immutable=1`` read of the main
+    file does not see anything still in ``zotero.sqlite-wal`` -- typically the
+    item imported a moment ago. Copying both files and checkpointing the copy
+    gives a consistent, current view. A WAL frame cut off mid-write fails its
+    checksum and is ignored, so a copy taken while Zotero writes still holds
+    every committed transaction up to that point.
+
+    Returns None when there is no WAL to fold in. The copy is rebuilt only when
+    either source file's size or mtime changed, and it is retried when the
+    source changes during the copy.
+    """
+    wal = path.with_name(path.name + "-wal")
+    if not (_file_sig(wal) or [0])[0]:
+        return None
+    root = snapshot_root() / hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
+    snap = root / "zotero.sqlite"
+    meta = root / "source.json"
+    for _ in range(attempts):
+        sig = [_file_sig(path), _file_sig(wal)]
+        if sig[0] is None:
+            return None
+        if not (sig[1] or [0])[0]:
+            return None  # Zotero checkpointed and truncated the WAL meanwhile
+        try:
+            if snap.exists() and json.loads(meta.read_text(encoding="utf-8")) == sig:
+                return snap
+        except (OSError, ValueError):
+            pass
+        root.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(root, 0o700)  # the copy holds the whole library
+        except OSError:
+            pass
+        build = Path(tempfile.mkdtemp(prefix="build-", dir=root))
+        try:
+            shutil.copyfile(path, build / "zotero.sqlite")
+            shutil.copyfile(wal, build / "zotero.sqlite-wal")
+            if [_file_sig(path), _file_sig(wal)] != sig:
+                continue  # Zotero wrote during the copy; take it again
+            conn = sqlite3.connect(build / "zotero.sqlite", isolation_level=None)
+            try:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("PRAGMA journal_mode=DELETE")
+            finally:
+                conn.close()
+            os.replace(build / "zotero.sqlite", snap)
+            meta.write_text(json.dumps(sig), encoding="utf-8")
+            return snap
+        finally:
+            shutil.rmtree(build, ignore_errors=True)
+    return None
+
+
 def connect_readonly(sqlite_path: Path | str) -> sqlite3.Connection:
     path = Path(sqlite_path).resolve()
     if not path.exists():
         raise FileNotFoundError(f"Zotero database not found: {path}")
-    uri = f"file:{path.as_posix()}?mode=ro&immutable=1"
+    target = path
+    if os.environ.get(SNAPSHOT_ENV, "").strip() != "0":
+        try:
+            target = wal_snapshot(path) or path
+        except Exception:
+            target = path  # never worse than reading the main file alone
+    uri = f"file:{target.as_posix()}?mode=ro&immutable=1"
     connection = sqlite3.connect(uri, uri=True, timeout=1.0)
     connection.row_factory = sqlite3.Row
     return connection

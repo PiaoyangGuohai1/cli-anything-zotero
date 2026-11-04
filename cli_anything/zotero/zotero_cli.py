@@ -2974,6 +2974,38 @@ def dispatch(argv: list[str] | None = None, prog_name: str | None = None) -> int
     return int(result or 0)
 
 
+def _harden_std_streams() -> None:
+    """Make sure no output path can die on the console encoding (#13).
+
+    Piped or SSH output whose locale encoding is not UTF-8 (cp1252 on a German
+    Windows host, for example) is switched to UTF-8: that is what agents on the
+    other end decode, and what Python 3.15 does by default (PEP 686). A real
+    terminal, or an encoding the user chose with PYTHONIOENCODING, is kept,
+    and characters it cannot show are backslash-escaped instead of raising
+    UnicodeEncodeError. Already-UTF-8 streams are left alone.
+    """
+    import codecs
+    import os
+
+    chosen = bool(os.environ.get("PYTHONIOENCODING", "").strip())
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        encoding = getattr(stream, "encoding", None)
+        if reconfigure is None or not encoding:
+            continue
+        try:
+            if codecs.lookup(encoding).name == "utf-8":
+                continue
+            if chosen or stream.isatty():
+                reconfigure(errors="backslashreplace")
+            else:
+                reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            # Never let stream setup itself stop the CLI.
+            pass
+
+
 def entrypoint(argv: list[str] | None = None) -> int:
+    _harden_std_streams()
     return dispatch(argv, prog_name=sys.argv[0])
 
