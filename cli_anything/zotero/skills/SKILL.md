@@ -268,7 +268,7 @@ zotero-cli repl
 
 - **All platforms**: Works on macOS, Windows, and Linux with the JS Bridge plugin installed.
 - **Zotero desktop must be running**: This is a hard prerequisite (not optional). Use `zotero-cli --json app doctor` / `app launch` if it is closed. Do **not** invent cloud-only or read-only degraded workflows.
-- **JS Bridge plugin required**: Install via `zotero-cli app install-plugin`. Once installed, all JS bridge commands work silently.
+- **JS Bridge plugin required**: Install via `zotero-cli app install-plugin`. Once installed, all JS bridge commands work silently. If `app doctor` says Zotero disabled the bridge (e.g. after a Zotero upgrade), the fix is: quit Zotero (ask the user first), `zotero-cli app install-plugin`, start Zotero.
 - **Semantic search**: Requires `ZOTERO_EMBED_API`, `ZOTERO_EMBED_MODEL`, and `ZOTERO_EMBED_KEY` environment variables, plus a pre-built vector index at `ZOTERO_VECTOR_DB`.
 - **Item references**: Most commands accept a Zotero item key (8-char alphanumeric like `9LPV3KTS`), title fragment, or numeric ID.
 - **Collection references**: Accept collection key or numeric ID.
@@ -304,4 +304,4 @@ zotero-cli --json item similar ITEM_KEY --top-k 10
 
 ## Version
 
-1.4.1+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.
+1.4.2+ (see package `__version__` / PyPI). Roadmap: repo `docs/ROADMAP.md`.

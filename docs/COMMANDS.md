@@ -19,7 +19,7 @@ Complete command reference for `zotero-cli`. For installation and quick start, s
 | `app launch` | Launch Zotero if not running |
 | `app enable-local-api` | Enable Local API in Zotero prefs |
 | `app plugin-status` | Check JS Bridge plugin installation |
-| `app install-plugin` | Install/update the JS Bridge plugin |
+| `app install-plugin` | Install/update the JS Bridge plugin. With Zotero closed, upgrades a bridge Zotero already knows (also one it disabled as incompatible) without the Plugins window; a first install still goes through Zotero |
 
 ## item -- Item Operations
 

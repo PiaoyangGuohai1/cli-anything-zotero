@@ -6,9 +6,10 @@ import os
 import re
 import shutil
 import zipfile
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Iterator, Mapping, Optional
 
 
 DATA_DIR_PREF = "extensions.zotero.dataDir"
@@ -344,6 +345,24 @@ def installed_plugin_version(profile_dir: Path | None) -> str | None:
     return str(version) if version else None
 
 
+def plugin_registration(profile_dir: Path | None) -> dict | None:
+    """Return Zotero's ``extensions.json`` entry for CLI Bridge, or None.
+
+    None means Zotero has not registered the plugin in this profile (never
+    installed, removed, or the file is unreadable).
+    """
+    if profile_dir is None:
+        return None
+    try:
+        payload = json.loads((profile_dir / "extensions.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for addon in payload.get("addons") or []:
+        if isinstance(addon, dict) and addon.get("id") == PLUGIN_ADDON_ID:
+            return addon
+    return None
+
+
 def plugin_app_disabled(profile_dir: Path | None) -> bool:
     """Return True when Zotero itself disabled the CLI Bridge plugin.
 
@@ -351,16 +370,18 @@ def plugin_app_disabled(profile_dir: Path | None) -> bool:
     Zotero version falls outside the plugin manifest's strict version range, which
     silently leaves the .xpi on disk while /cli-bridge/eval is never registered.
     """
-    if profile_dir is None:
-        return False
-    try:
-        payload = json.loads((profile_dir / "extensions.json").read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    for addon in payload.get("addons") or []:
-        if addon.get("id") == PLUGIN_ADDON_ID:
-            return bool(addon.get("appDisabled"))
-    return False
+    entry = plugin_registration(profile_dir)
+    return bool(entry and entry.get("appDisabled"))
+
+
+def plugin_user_disabled(profile_dir: Path | None) -> bool:
+    """Return True when CLI Bridge is switched off in Zotero's Plugins window.
+
+    Besides a user turning it off, Zotero does this to a plugin that appeared in
+    the profile's extensions folder without being installed through Zotero.
+    """
+    entry = plugin_registration(profile_dir)
+    return bool(entry and entry.get("userDisabled"))
 
 
 def plugin_update_available(profile_dir: Path | None) -> bool:
@@ -389,6 +410,105 @@ def install_plugin_xpi(profile_dir: Path) -> Path:
         zf.write(manifest, "manifest.json")
         zf.write(bootstrap, "bootstrap.js")
     return xpi_path
+
+
+class ProfileInUseError(RuntimeError):
+    """A Zotero process holds the profile lock (running, or stuck while starting)."""
+
+
+def _profile_lock_file(profile_dir: Path) -> Path:
+    # Same files Firefox's nsProfileLock uses on each platform.
+    return profile_dir / ("parent.lock" if os.name == "nt" else ".parentlock")
+
+
+@contextmanager
+def profile_lock(profile_dir: Path) -> Iterator[None]:
+    """Hold the Zotero profile lock for the duration of the block.
+
+    Raises ProfileInUseError when Zotero has the profile open. On POSIX this takes
+    the same fcntl lock Zotero takes at startup, so Zotero cannot open the profile
+    while files are being changed. On Windows Zotero holds ``parent.lock`` open
+    without sharing; failing to open it means Zotero is running. Anything we cannot
+    verify counts as in use.
+    """
+    lock_file = _profile_lock_file(profile_dir)
+    if os.name == "nt":
+        if lock_file.exists():
+            try:
+                with open(lock_file, "r+b"):
+                    pass
+            except OSError as exc:
+                raise ProfileInUseError(str(lock_file)) from exc
+        yield
+        return
+
+    import errno
+    import fcntl
+
+    try:
+        fd = os.open(lock_file, os.O_RDWR | os.O_CREAT, 0o644)
+    except OSError as exc:
+        raise ProfileInUseError(str(lock_file)) from exc
+    try:
+        try:
+            fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            if exc.errno not in (errno.EAGAIN, errno.EACCES):
+                # e.g. ENOLCK on a network filesystem: Zotero may still be running.
+                raise ProfileInUseError(f"{lock_file}: {exc}") from exc
+            raise ProfileInUseError(str(lock_file)) from exc
+        try:
+            yield
+        finally:
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+def profile_in_use(profile_dir: Path) -> bool:
+    """Return True when a Zotero process has this profile open."""
+    try:
+        with profile_lock(profile_dir):
+            return False
+    except ProfileInUseError:
+        return True
+
+
+ADDON_SCAN_PREFS = ("extensions.lastAppBuildId", "extensions.lastAppVersion")
+_ADDON_SCAN_PREF_LINE = re.compile(
+    rb'^\s*user_pref\(\s*"(' + b"|".join(re.escape(p.encode()) for p in ADDON_SCAN_PREFS) + rb')"'
+)
+
+
+def clear_addon_scan_prefs(profile_dir: Path) -> list[str]:
+    """Make Zotero rescan the profile's extensions directory on its next start.
+
+    Zotero (``extensions.startupScanScopes = 0``) only looks at files in
+    ``extensions/`` when it thinks the application changed. Dropping the two
+    prefs that record the last app version triggers that check, which is how
+    Zotero's plugin docs load a plugin without the Add-ons window. Only call this
+    while holding ``profile_lock``; Zotero rewrites prefs.js when it exits.
+    Returns the pref names removed.
+    """
+    prefs = profile_dir / "prefs.js"
+    try:
+        raw = prefs.read_bytes()
+    except FileNotFoundError:
+        return []
+    kept: list[bytes] = []
+    removed: list[str] = []
+    for line in raw.splitlines(keepends=True):
+        match = _ADDON_SCAN_PREF_LINE.match(line)
+        if match:
+            removed.append(match.group(1).decode())
+        else:
+            kept.append(line)
+    if removed:
+        tmp = prefs.with_name(prefs.name + ".cli-tmp")
+        tmp.write_bytes(b"".join(kept))
+        shutil.copymode(prefs, tmp)
+        os.replace(tmp, prefs)
+    return removed
 
 
 def uninstall_plugin(profile_dir: Path | None) -> bool:

@@ -137,9 +137,9 @@ class PathDiscoveryTests(unittest.TestCase):
                 manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
 
             zotero_app = manifest["applications"]["zotero"]
-            self.assertEqual(manifest["version"], "1.4.1")
-            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.4.1")
-            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.4.1")
+            self.assertEqual(manifest["version"], "1.4.2")
+            self.assertEqual(zotero_paths.installed_plugin_version(env["profile_dir"]), "1.4.2")
+            self.assertEqual(zotero_paths.bundled_plugin_version(), "1.4.2")
             self.assertFalse(zotero_paths.plugin_update_available(env["profile_dir"]))
             self.assertEqual(zotero_app["strict_min_version"], "6.999")
             # Zotero 10 disables plugins whose max version is below the running major.
@@ -2670,3 +2670,171 @@ class WalSnapshotTests(unittest.TestCase):
         self._write(1)
         snap = zotero_sqlite.wal_snapshot(self.db)
         self.assertEqual(stat.S_IMODE(snap.parent.stat().st_mode), 0o700)
+
+
+_PREFS_JS = (
+    b'// Mozilla User Preferences\n'
+    b'user_pref("extensions.lastAppBuildId", "20261029162100");\n'
+    b'user_pref("extensions.lastAppVersion", "10.0.7");\n'
+    b'user_pref("extensions.lastAppVersionNote", "keep");\n'
+    b'user_pref("extensions.zotero.dataDir", "/Users/x/Zotero \xe2\x80\x94 data");\n'
+)
+
+_HOLD_LOCK = (
+    "import fcntl, os, sys\n"
+    "fd = os.open(sys.argv[1], os.O_RDWR | os.O_CREAT, 0o644)\n"
+    "fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+    "print('held', flush=True)\n"
+    "sys.stdin.read()\n"
+)
+
+
+class PluginOfflineInstallTests(unittest.TestCase):
+    """`app install-plugin` with Zotero closed, the path that needs no Plugins window."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.profile = Path(self._tmp.name) / "profile"
+        self.profile.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _register(self, **fields):
+        entry = {"id": zotero_paths.PLUGIN_ADDON_ID, "userDisabled": False, "appDisabled": False, **fields}
+        (self.profile / "extensions.json").write_text(json.dumps({"schemaVersion": 37, "addons": [entry]}), encoding="utf-8")
+
+    def _hold_lock(self):
+        proc = subprocess.Popen(
+            [os.sys.executable, "-c", _HOLD_LOCK, str(self.profile / ".parentlock")],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+        )
+        self.assertEqual(proc.stdout.readline().strip(), "held")
+        self.addCleanup(lambda: (proc.stdin.close(), proc.wait(timeout=10)))
+        return proc
+
+    def _install(self, *, bridge_active=False, js_result=None):
+        import contextlib
+        import io
+        import types
+
+        from cli_anything.zotero import zotero_cli
+
+        runtime = types.SimpleNamespace(environment=types.SimpleNamespace(profile_dir=self.profile))
+        bridge = mock.Mock()
+        bridge.bridge_endpoint_active.return_value = bridge_active
+        bridge.execute_js.return_value = js_result or {"ok": False, "data": None, "error": "boom"}
+        out = io.StringIO()
+        with mock.patch.object(zotero_cli, "current_bridge", return_value=bridge), \
+                mock.patch.object(zotero_cli, "current_runtime", return_value=runtime), \
+                mock.patch.object(zotero_cli, "current_session", return_value={}), \
+                contextlib.redirect_stdout(out):
+            code = zotero_cli.dispatch(["--json", "app", "install-plugin"])
+        self.assertEqual(code, 0)
+        return json.loads(out.getvalue()), bridge
+
+    def test_clear_addon_scan_prefs_drops_only_the_two_version_prefs(self):
+        prefs = self.profile / "prefs.js"
+        prefs.write_bytes(_PREFS_JS)
+        prefs.chmod(0o600)
+
+        removed = zotero_paths.clear_addon_scan_prefs(self.profile)
+
+        self.assertEqual(removed, ["extensions.lastAppBuildId", "extensions.lastAppVersion"])
+        expected = b"".join(line for line in _PREFS_JS.splitlines(keepends=True) if b'lastAppBuildId"' not in line and b'lastAppVersion"' not in line)
+        self.assertEqual(prefs.read_bytes(), expected)
+        self.assertIn(b"lastAppVersionNote", prefs.read_bytes())
+        if os.name != "nt":
+            self.assertEqual(prefs.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(zotero_paths.clear_addon_scan_prefs(self.profile), [])
+        self.assertEqual(sorted(p.name for p in self.profile.iterdir()), ["prefs.js"])
+
+    def test_clear_addon_scan_prefs_without_prefs_file(self):
+        self.assertEqual(zotero_paths.clear_addon_scan_prefs(self.profile), [])
+        self.assertFalse((self.profile / "prefs.js").exists())
+
+    def test_plugin_registration_reads_extensions_json(self):
+        self.assertIsNone(zotero_paths.plugin_registration(self.profile))
+        (self.profile / "extensions.json").write_text("{not json", encoding="utf-8")
+        self.assertIsNone(zotero_paths.plugin_registration(self.profile))
+        self._register(userDisabled=True, appDisabled=True)
+        self.assertTrue(zotero_paths.plugin_user_disabled(self.profile))
+        self.assertTrue(zotero_paths.plugin_app_disabled(self.profile))
+
+    @unittest.skipIf(os.name == "nt", "POSIX profile lock")
+    def test_profile_lock_sees_a_running_zotero(self):
+        self.assertFalse(zotero_paths.profile_in_use(self.profile))
+        holder = self._hold_lock()
+        self.assertTrue(zotero_paths.profile_in_use(self.profile))
+        with self.assertRaises(zotero_paths.ProfileInUseError):
+            with zotero_paths.profile_lock(self.profile):
+                pass
+        holder.stdin.close()
+        holder.wait(timeout=10)
+        self.assertFalse(zotero_paths.profile_in_use(self.profile))
+
+    def test_offline_upgrade_of_a_registered_bridge(self):
+        # Zotero 10 disabled a bridge that was installed through Zotero 9's Plugins window.
+        self._register(version="1.2.0", appDisabled=True)
+        (self.profile / "prefs.js").write_bytes(_PREFS_JS)
+
+        payload, bridge = self._install()
+
+        self.assertEqual(payload["method"], "offline")
+        self.assertFalse(payload["zotero_running"])
+        self.assertFalse(payload["user_disabled"])
+        self.assertEqual(payload["prefs_cleared"], ["extensions.lastAppBuildId", "extensions.lastAppVersion"])
+        self.assertEqual(zotero_paths.installed_plugin_version(self.profile), zotero_paths.bundled_plugin_version())
+        self.assertNotIn(b"lastAppBuildId", (self.profile / "prefs.js").read_bytes())
+        bridge.execute_js.assert_not_called()
+
+    def test_offline_upgrade_of_a_switched_off_bridge_says_to_turn_it_on(self):
+        self._register(userDisabled=True)
+        payload, _ = self._install()
+        self.assertEqual(payload["method"], "offline")
+        self.assertTrue(payload["user_disabled"])
+        self.assertIn("turn it on in Tools > Plugins", payload["message"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX profile lock")
+    def test_running_zotero_is_left_alone(self):
+        self._register(appDisabled=True)
+        (self.profile / "prefs.js").write_bytes(_PREFS_JS)
+        self._hold_lock()
+
+        payload, _ = self._install()
+
+        self.assertEqual(payload["method"], "manual")
+        self.assertTrue(payload["zotero_running"])
+        self.assertIn("Quit Zotero and rerun", payload["message"])
+        self.assertEqual((self.profile / "prefs.js").read_bytes(), _PREFS_JS)
+
+    def test_first_install_goes_through_zotero(self):
+        # Zotero switches off plugins that appear in the profile on their own.
+        (self.profile / "prefs.js").write_bytes(_PREFS_JS)
+
+        payload, _ = self._install()
+
+        self.assertEqual(payload["method"], "manual")
+        self.assertFalse(payload["zotero_running"])
+        self.assertIn("first install goes through Zotero", payload["message"])
+        self.assertNotIn("Quit Zotero", payload["message"])
+        self.assertTrue(Path(payload["plugin_path"]).is_file())
+        self.assertEqual((self.profile / "prefs.js").read_bytes(), _PREFS_JS)
+
+    def test_active_bridge_upgrades_in_place(self):
+        self._register()
+        (self.profile / "prefs.js").write_bytes(_PREFS_JS)
+        payload, bridge = self._install(
+            bridge_active=True, js_result={"ok": True, "data": "OK: cli-bridge@cli-anything.dev"}
+        )
+        self.assertEqual(payload["method"], "automatic")
+        bridge.execute_js.assert_called_once()
+        self.assertEqual((self.profile / "prefs.js").read_bytes(), _PREFS_JS)
+
+    def test_failed_bridge_upgrade_suggests_quitting_zotero(self):
+        self._register()
+        payload, _ = self._install(bridge_active=True)
+        self.assertEqual(payload["method"], "manual")
+        self.assertTrue(payload["zotero_running"])
+        self.assertIn("running CLI Bridge failed", payload["message"])
+        self.assertIn("Quit Zotero and rerun", payload["message"])

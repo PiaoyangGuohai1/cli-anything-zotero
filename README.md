@@ -121,14 +121,14 @@ This installs the `zotero-cli` command. The old `cli-anything-zotero` command re
 zotero-cli app install-plugin
 ```
 
-First install requires manual steps in Zotero:
+The first install goes through Zotero's Plugins window (Zotero switches off plugins that appear in its profile on their own):
 1. The command generates a `.xpi` file and prints its path
 2. In Zotero: **Tools → Plugins → gear icon → Install Plugin From File...**
 3. Select the `.xpi` file, then **restart Zotero**
 
-> After the first install, future upgrades via `app install-plugin` are automatic.
+> After the first install, `app install-plugin` upgrades the bridge without the Plugins window. With Zotero running and the bridge active, it upgrades through the bridge. With Zotero closed, it replaces the plugin in the profile and Zotero loads it on its next start.
 
-> **Upgrading to Zotero 10:** bridge versions up to 1.2.1 only declare support for Zotero 7–9, so Zotero 10 disables them. Upgrade to 1.2.2 or later and repeat the manual install above once; automatic upgrades work again afterwards.
+> **Upgrading to Zotero 10:** bridge versions up to 1.2.1 only declare support for Zotero 7–9, so Zotero 10 disables them. Upgrade cli-anything-zotero (1.4.2 or later), quit Zotero, run `zotero-cli app install-plugin`, then start Zotero.
 
 For existing users upgrading to the dynamic DOCX citation workflow, update both
 the Python package and the Zotero bridge plugin:
@@ -159,7 +159,8 @@ zotero-cli js "return Zotero.version"
 | `Cannot resolve Zotero profile directory` | Launch Zotero at least once first |
 | Plugin not appearing | Restart Zotero after installing the `.xpi` |
 | `endpoint_active: false` | Plugin failed to load — reinstall via Zotero UI |
-| `No endpoint found` after a Zotero major upgrade | Zotero disabled the bridge as incompatible; `zotero-cli app doctor` reports `app_disabled`. Upgrade cli-anything-zotero, run `zotero-cli app install-plugin`, then install the printed `.xpi` once by hand (**Tools → Plugins → gear → Install Plugin From File...**) and restart Zotero. Automatic upgrade cannot work here because it needs the live bridge |
+| `No endpoint found` after a Zotero major upgrade | Zotero disabled the bridge as incompatible; `zotero-cli app doctor` reports `app_disabled`. Upgrade cli-anything-zotero, quit Zotero, run `zotero-cli app install-plugin`, then start Zotero |
+| `app doctor` reports `user_disabled` | The bridge is switched off in Zotero: turn it on in **Tools → Plugins** |
 | Windows: `pip` not recognized | Close and reopen PowerShell after installing Python |
 
 ---

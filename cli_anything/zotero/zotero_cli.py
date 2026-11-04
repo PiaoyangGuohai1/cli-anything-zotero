@@ -550,19 +550,61 @@ def app_ping(ctx: click.Context) -> int:
 @app.command("install-plugin")
 @click.pass_context
 def app_install_plugin(ctx: click.Context) -> int:
-    """Install the CLI Bridge plugin into Zotero.
+    """Install or upgrade the CLI Bridge plugin in Zotero.
 
-    Builds the .xpi and attempts programmatic installation via the JS bridge.
-    If that is not available, saves the .xpi and prints manual install instructions.
+    Zotero running with the bridge active: upgrades through the bridge.
+    Zotero closed and the bridge registered before (installed once through
+    Zotero, even if Zotero later disabled it as incompatible): replaces the plugin
+    in the profile; Zotero loads it on its next start, no Plugins window needed.
+    Otherwise: saves the .xpi and prints how to install it in Zotero. A first
+    install has to go through Zotero, which switches off plugins that appear in
+    its profile on their own.
     """
     runtime = current_runtime(ctx)
     profile_dir = runtime.environment.profile_dir
     if profile_dir is None:
         raise click.ClickException("Cannot resolve Zotero profile directory.")
+
+    bridge_active = current_bridge(ctx).bridge_endpoint_active()
+    registration = zotero_paths.plugin_registration(profile_dir)
+    if bridge_active:
+        running = True
+    elif registration is None:
+        running = zotero_paths.profile_in_use(profile_dir)
+    else:
+        try:
+            with zotero_paths.profile_lock(profile_dir):
+                xpi_path = zotero_paths.install_plugin_xpi(profile_dir)
+                cleared = zotero_paths.clear_addon_scan_prefs(profile_dir)
+        except zotero_paths.ProfileInUseError:
+            running = True
+        else:
+            if registration.get("userDisabled"):
+                after = (
+                    "CLI Bridge is switched off in Zotero, though: start Zotero, turn it on in "
+                    "Tools > Plugins, then run: zotero-cli app plugin-status."
+                )
+            else:
+                after = (
+                    "Start Zotero (or run: zotero-cli app launch); it loads the plugin on startup. "
+                    "Then run: zotero-cli app plugin-status."
+                )
+            emit(ctx, {
+                "action": "install_plugin",
+                "method": "offline",
+                "zotero_running": False,
+                "plugin_path": str(xpi_path),
+                "plugin_version": zotero_paths.bundled_plugin_version(),
+                "user_disabled": bool(registration.get("userDisabled")),
+                "prefs_cleared": cleared,
+                "message": f"Zotero is not running, so the plugin was replaced in the profile. {after}",
+            })
+            return 0
+
     xpi_path = zotero_paths.install_plugin_xpi(profile_dir)
 
     # Try programmatic install via JS bridge (works when bridge is already active)
-    if current_bridge(ctx).bridge_endpoint_active():
+    if bridge_active:
         js = (
             "var {AddonManager} = ChromeUtils.importESModule("
             "'resource://gre/modules/AddonManager.sys.mjs'); "
@@ -576,20 +618,38 @@ def app_install_plugin(ctx: click.Context) -> int:
             emit(ctx, {
                 "action": "install_plugin",
                 "method": "automatic",
+                "zotero_running": True,
                 "plugin_path": str(xpi_path),
                 "message": "Plugin installed. Restart Zotero so /cli-bridge/eval is active, then run: zotero-cli app plugin-status.",
             })
             return 0
+        reason = "Installing through the running CLI Bridge failed."
+    elif running:
+        reason = "Zotero is running without an active CLI Bridge."
+    else:
+        reason = (
+            "Zotero has not installed CLI Bridge in this profile before, so the first install "
+            "goes through Zotero (it switches off plugins that appear in its profile on their own); "
+            "later upgrades work with Zotero closed."
+        )
 
-    # Fallback: save xpi and instruct user to install manually
+    if running and registration is not None:
+        how = (
+            " Quit Zotero and rerun zotero-cli app install-plugin (no Plugins window needed), "
+            "or install it in Zotero:"
+        )
+    elif running:
+        how = " Install it in Zotero:"
+    else:
+        how = " Start Zotero, then:"
     emit(ctx, {
         "action": "install_plugin",
         "method": "manual",
+        "zotero_running": running,
         "plugin_path": str(xpi_path),
         "message": (
-            "Plugin .xpi created. Install manually in Zotero: "
-            "Tools > Add-ons > gear icon > Install Add-on From File, "
-            f"then select: {xpi_path}. Restart Zotero so /cli-bridge/eval is active, "
+            f"{reason}{how} Tools > Plugins > gear icon > Install Plugin From File, "
+            f"select: {xpi_path}. Restart Zotero so /cli-bridge/eval is active, "
             "then run: zotero-cli app plugin-status."
         ),
     })
@@ -665,6 +725,7 @@ def app_plugin_status(ctx: click.Context) -> int:
     installed_version = zotero_paths.installed_plugin_version(profile_dir)
     bundled_version = zotero_paths.bundled_plugin_version()
     update_available = bool(installed_version and bundled_version and installed_version != bundled_version)
+    user_disabled = zotero_paths.plugin_user_disabled(profile_dir)
     active = current_bridge(ctx).bridge_endpoint_active()
     js_result = None
     js_ok = False
@@ -679,6 +740,8 @@ def app_plugin_status(ctx: click.Context) -> int:
         next_step = "Run: zotero-cli app install-plugin, restart Zotero, then rerun this command."
     elif update_available:
         next_step = "Run: zotero-cli app install-plugin, restart Zotero, then rerun this command."
+    elif user_disabled and not active:
+        next_step = "CLI Bridge is switched off in Zotero. Turn it on in Tools > Plugins, then rerun this command."
     elif not active:
         next_step = "Restart Zotero. If the endpoint is still inactive, reinstall with: zotero-cli app install-plugin"
     elif not js_ok:
@@ -691,6 +754,7 @@ def app_plugin_status(ctx: click.Context) -> int:
             "installed_version": installed_version,
             "bundled_version": bundled_version,
             "update_available": update_available,
+            "user_disabled": user_disabled,
         },
         "bridge": {"endpoint_active": active, "js_ok": js_ok, "js_result": js_result, "js_error": js_error},
         "plugin_installed": installed,

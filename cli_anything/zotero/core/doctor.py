@@ -22,6 +22,8 @@ def run_doctor(runtime: RuntimeContext, bridge: JSBridgeClient) -> dict[str, Any
     )
     app_disabled = zotero_paths.plugin_app_disabled(profile_dir)
     active = bridge.bridge_endpoint_active()
+    # extensions.json can lag behind a plugin the user just switched on.
+    user_disabled = zotero_paths.plugin_user_disabled(profile_dir) and not active
 
     js_ok = False
     js_error = None
@@ -69,13 +71,14 @@ def run_doctor(runtime: RuntimeContext, bridge: JSBridgeClient) -> dict[str, Any
             "configured": bool(runtime.environment.local_api_enabled_configured),
         },
         "plugin": {
-            "ok": bool(installed and not update_available and not app_disabled),
+            "ok": bool(installed and not update_available and not app_disabled and not user_disabled),
             "xpi_installed": installed,
             "xpi_path": str(xpi_path) if xpi_path else None,
             "installed_version": installed_version,
             "bundled_version": bundled_version,
             "update_available": update_available,
             "app_disabled": app_disabled,
+            "user_disabled": user_disabled,
         },
         "bridge": {
             "ok": bool(active and js_ok),
@@ -100,8 +103,12 @@ def run_doctor(runtime: RuntimeContext, bridge: JSBridgeClient) -> dict[str, Any
     elif app_disabled:
         next_steps.append(
             f"Zotero {runtime.environment.version} disabled CLI Bridge {installed_version} "
-            "as incompatible. Upgrade cli-anything-zotero, run: zotero-cli app install-plugin, "
-            "then restart Zotero."
+            "as incompatible. Upgrade cli-anything-zotero, quit Zotero, run: "
+            "zotero-cli app install-plugin, then start Zotero."
+        )
+    elif user_disabled:
+        next_steps.append(
+            "CLI Bridge is switched off in Zotero. Turn it on in Tools → Plugins."
         )
     elif update_available:
         next_steps.append(
@@ -153,7 +160,8 @@ def plugin_version_warning(runtime: RuntimeContext) -> dict[str, Any] | None:
             "bundled_version": bundled,
             "message": (
                 f"Zotero {runtime.environment.version} disabled CLI Bridge {installed}. "
-                "Upgrade cli-anything-zotero, run: zotero-cli app install-plugin, then restart Zotero."
+                "Upgrade cli-anything-zotero, quit Zotero, run: zotero-cli app install-plugin, "
+                "then start Zotero."
             ),
         }
     if installed and bundled and installed != bundled:
